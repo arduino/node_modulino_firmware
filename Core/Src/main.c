@@ -23,9 +23,12 @@
 
 I2C_HandleTypeDef hi2c1;
 IWDG_HandleTypeDef hiwdg;
+TIM_HandleTypeDef htim1;
 
 #define NODE_BUTTONS    0x7C
 #define NODE_BUZZER     0x3C
+#define NODE_ENCODER    0x76
+#define NODE_ENCODER_2  0x74
 
 
 /* Private function prototypes -----------------------------------------------*/
@@ -34,6 +37,7 @@ static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(uint8_t address);
 static void MX_IWDG_Init(void);
 static void MX_NVIC_Init(void);
+static void MX_TIM1_Init(void);
 static uint8_t readPinstraps();
 
 static volatile bool dataReceived = false;
@@ -100,6 +104,16 @@ void configurePins() {
       GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
       HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
       break;
+    case NODE_ENCODER:
+    case NODE_ENCODER_2:
+      GPIO_InitStruct.Pin = GPIO_PIN_2;
+      GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+      GPIO_InitStruct.Pull = GPIO_NOPULL;
+      GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+      HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+      MX_TIM1_Init();
+      HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);
+      break;
     }
 }
 
@@ -110,7 +124,12 @@ uint8_t populateBuffer() {
       i2c_buffer[1] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1);
       i2c_buffer[2] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2);
       return 3;
-      break;
+    case NODE_ENCODER:
+    case NODE_ENCODER_2:
+      uint16_t data = __HAL_TIM_GET_COUNTER(&htim1);
+      memcpy(i2c_buffer, &data, 2);
+      i2c_buffer[2] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == 0 ? GPIO_PIN_SET : GPIO_PIN_RESET;
+      return 3;
   }
 }
 
@@ -120,6 +139,9 @@ uint8_t prepareRx() {
       return 3;
     case NODE_BUZZER:
       return 1;
+    case NODE_ENCODER:
+    case NODE_ENCODER_2:
+      return 4;
   }
 }
 
@@ -240,6 +262,40 @@ static void MX_I2C1_Init(uint8_t address)
   }
 }
 
+
+static void MX_TIM1_Init(void)
+{
+  TIM_Encoder_InitTypeDef sConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  htim1.Instance = TIM1;
+  htim1.Init.Prescaler = 0;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim1.Init.Period = 65535;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim1.Init.RepetitionCounter = 0;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  sConfig.EncoderMode = TIM_ENCODERMODE_TI1;
+  sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC1Filter = 0;
+  sConfig.IC2Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC2Filter = 0;
+  if (HAL_TIM_Encoder_Init(&htim1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterOutputTrigger2 = TIM_TRGO2_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
 /**
   * @brief IWDG Initialization Function
   * @param None
@@ -278,7 +334,7 @@ static uint8_t readPinstraps() {
 
   GPIO_InitStruct.Pin = GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
   GPIO_InitStruct.Pin = GPIO_PIN_14 | GPIO_PIN_15;
