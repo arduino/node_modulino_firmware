@@ -54,7 +54,9 @@ Drivers/STM32C0xx_HAL_Driver/Src/stm32c0xx_hal_exti.c \
 Drivers/STM32C0xx_HAL_Driver/Src/stm32c0xx_hal_i2c.c \
 Drivers/STM32C0xx_HAL_Driver/Src/stm32c0xx_hal_i2c_ex.c \
 Core/Src/system_stm32c0xx.c \
-Drivers/STM32C0xx_HAL_Driver/Src/stm32c0xx_hal_iwdg.c
+Drivers/STM32C0xx_HAL_Driver/Src/stm32c0xx_hal_iwdg.c \
+Drivers/STM32C0xx_HAL_Driver/Src/stm32c0xx_hal_tim.c \
+Drivers/STM32C0xx_HAL_Driver/Src/stm32c0xx_hal_tim_ex.c
 
 # ASM sources
 ASM_SOURCES =  \
