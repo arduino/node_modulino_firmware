@@ -29,6 +29,8 @@ TIM_HandleTypeDef htim1;
 #define NODE_BUZZER     0x3C
 #define NODE_ENCODER    0x76
 #define NODE_ENCODER_2  0x74
+#define NODE_SMARTLEDS  0x6C
+#define NUM_LEDS        10
 
 
 /* Private function prototypes -----------------------------------------------*/
@@ -39,6 +41,7 @@ static void MX_IWDG_Init(void);
 static void MX_NVIC_Init(void);
 static void MX_TIM1_Init(void);
 static uint8_t readPinstraps();
+static void transfer(uint8_t b);
 
 static volatile bool dataReceived = false;
 static uint8_t i2c_buffer[128];
@@ -81,9 +84,34 @@ int main(void)
         case NODE_BUZZER:
           HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, i2c_buffer[0] == 0 ? GPIO_PIN_RESET: GPIO_PIN_SET);
           break;
+        case NODE_SMARTLEDS:
+          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, GPIO_PIN_RESET); //DATA
+          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET); //CLOCK
+          transfer(0);
+          transfer(0);
+          transfer(0);
+          transfer(0);
+          for (int i = 0; i < NUM_LEDS * 4; i++) {
+            transfer(i2c_buffer[i]);
+          }
+          for (int i = 0; i < (NUM_LEDS + 14)/16; i++)
+          {
+            transfer(0);
+          }
+          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, GPIO_PIN_RESET);
+          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET);
+          break;
       }
       dataReceived = false;
     }
+  }
+}
+
+void transfer(uint8_t b) {
+  for (int i = 7; i >= 0; i--) {
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, (b >> i) & 1 ? GPIO_PIN_SET : GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET);
   }
 }
 
@@ -98,6 +126,7 @@ void configurePins() {
       HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
       break;
     case NODE_BUZZER:
+      // TODO: use a PWM like
       GPIO_InitStruct.Pin = GPIO_PIN_0;
       GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
       GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -114,6 +143,15 @@ void configurePins() {
       MX_TIM1_Init();
       HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);
       break;
+    case NODE_SMARTLEDS:
+      // TODO: use an SPI like
+      // Boost enable
+      GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2;
+      GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+      GPIO_InitStruct.Pull = GPIO_NOPULL;
+      GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+      HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+      HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_SET);
     }
 }
 
@@ -130,6 +168,8 @@ uint8_t populateBuffer() {
       memcpy(i2c_buffer, &data, 2);
       i2c_buffer[2] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == 0 ? GPIO_PIN_SET : GPIO_PIN_RESET;
       return 3;
+    case NODE_SMARTLEDS:
+      return NUM_LEDS * 4;
   }
 }
 
@@ -142,6 +182,8 @@ uint8_t prepareRx() {
     case NODE_ENCODER:
     case NODE_ENCODER_2:
       return 4;
+    case NODE_SMARTLEDS:
+      return NUM_LEDS * 4;
   }
 }
 
