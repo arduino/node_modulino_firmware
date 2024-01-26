@@ -39,7 +39,8 @@ static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(uint8_t address);
 static void MX_IWDG_Init(void);
 static void MX_NVIC_Init(void);
-static void MX_TIM1_Init(void);
+static void MX_TIM1_Encoder_Init(void);
+static void MX_TIM1_PWM_Init(void);
 static uint8_t readPinstraps();
 static void transfer(uint8_t b);
 
@@ -70,10 +71,17 @@ int main(void)
 
   HAL_I2C_EnableListen_IT(&hi2c1);
 
+  uint32_t endTone = 0;
+
   /* Infinite loop */
   while (1)
   {
     //HAL_IWDG_Refresh(&hiwdg);
+    if (endTone != 0 && HAL_GetTick() > endTone) {
+      HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
+      endTone = 0;
+    }
+
     if (dataReceived) {
       switch (ADDRESS) {
         case NODE_BUTTONS:
@@ -82,7 +90,19 @@ int main(void)
           HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, i2c_buffer[2] == 0 ? GPIO_PIN_RESET: GPIO_PIN_SET);
           break;
         case NODE_BUZZER:
-          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, i2c_buffer[0] == 0 ? GPIO_PIN_RESET: GPIO_PIN_SET);
+          uint32_t frequency;
+          uint32_t duration;
+          memcpy(&frequency, &i2c_buffer[0], sizeof(frequency));
+          memcpy(&duration, &i2c_buffer[4], sizeof(duration));
+          endTone = HAL_GetTick() + duration;
+
+          // TODO: make the prescaler precise and configurable
+          uint32_t val = 0xFFFF * 180 / frequency;
+          TIM1->ARR = val;
+          TIM1->CCR1 = val / 2;
+          //TIM_OC_InitTypeDef sConfig;
+          //HAL_TIM_PWM_ConfigChannel(&htim1, &sConfig, TIM_CHANNEL_1);
+          HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
           break;
         case NODE_SMARTLEDS:
           HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, GPIO_PIN_RESET); //DATA
@@ -126,12 +146,7 @@ void configurePins() {
       HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
       break;
     case NODE_BUZZER:
-      // TODO: use a PWM like
-      GPIO_InitStruct.Pin = GPIO_PIN_0;
-      GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-      GPIO_InitStruct.Pull = GPIO_NOPULL;
-      GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-      HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+      MX_TIM1_PWM_Init();
       break;
     case NODE_ENCODER:
     case NODE_ENCODER_2:
@@ -140,7 +155,7 @@ void configurePins() {
       GPIO_InitStruct.Pull = GPIO_NOPULL;
       GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
       HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-      MX_TIM1_Init();
+      MX_TIM1_Encoder_Init();
       HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);
       break;
     case NODE_SMARTLEDS:
@@ -178,7 +193,7 @@ uint8_t prepareRx() {
     case NODE_BUTTONS:
       return 3;
     case NODE_BUZZER:
-      return 1;
+      return 8;
     case NODE_ENCODER:
     case NODE_ENCODER_2:
       return 4;
@@ -305,7 +320,7 @@ static void MX_I2C1_Init(uint8_t address)
 }
 
 
-static void MX_TIM1_Init(void)
+static void MX_TIM1_Encoder_Init(void)
 {
   TIM_Encoder_InitTypeDef sConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
@@ -336,6 +351,62 @@ static void MX_TIM1_Init(void)
   {
     Error_Handler();
   }
+}
+
+static void MX_TIM1_PWM_Init(void)
+{
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+  TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
+
+  htim1.Instance = TIM1;
+  htim1.Init.Prescaler = 0;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim1.Init.Period = 65535;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim1.Init.RepetitionCounter = 0;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterOutputTrigger2 = TIM_TRGO2_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
+  sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
+  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
+  sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
+  sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
+  sBreakDeadTimeConfig.DeadTime = 0;
+  sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
+  sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
+  sBreakDeadTimeConfig.BreakFilter = 0;
+  sBreakDeadTimeConfig.BreakAFMode = TIM_BREAK_AFMODE_INPUT;
+  sBreakDeadTimeConfig.Break2State = TIM_BREAK2_DISABLE;
+  sBreakDeadTimeConfig.Break2Polarity = TIM_BREAK2POLARITY_HIGH;
+  sBreakDeadTimeConfig.Break2Filter = 0;
+  sBreakDeadTimeConfig.Break2AFMode = TIM_BREAK_AFMODE_INPUT;
+  sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
+  if (HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  HAL_TIM_MspPostInit(&htim1);
 }
 
 /**
