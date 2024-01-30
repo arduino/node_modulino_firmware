@@ -63,7 +63,7 @@ int main(void)
   MX_GPIO_Init();
   ADDRESS = readPinstraps();
   MX_I2C1_Init(ADDRESS);
-  //MX_IWDG_Init();
+  MX_IWDG_Init();
   /* Initialize interrupts */
   MX_NVIC_Init();
 
@@ -76,7 +76,7 @@ int main(void)
   /* Infinite loop */
   while (1)
   {
-    //HAL_IWDG_Refresh(&hiwdg);
+    HAL_IWDG_Refresh(&hiwdg);
     if (endTone != 0 && HAL_GetTick() > endTone) {
       HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
       endTone = 0;
