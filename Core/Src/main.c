@@ -49,6 +49,44 @@ static uint8_t i2c_buffer[128];
 
 static uint8_t ADDRESS;
 
+void JumpToBootloader (void)
+{
+  uint32_t i=0;
+  void (*SysMemBootJump)(void);
+
+	uint32_t BootAddr  = 0x1FFF0000;
+
+	/* Disable all interrupts */
+	__disable_irq();
+	/* Disable Systick timer */
+	SysTick->CTRL = 0;
+	/* Set the clock to the default state */
+	HAL_RCC_DeInit();
+
+	/* Clear Interrupt Enable Register & Interrupt Pending Register */
+	for (i=0;i<5;i++)
+	{
+		NVIC->ICER[i]=0xFFFFFFFF;
+		NVIC->ICPR[i]=0xFFFFFFFF;
+	}
+
+	/* Re-enable all interrupts */
+	__enable_irq();
+	/* Set up the jump to boot loader address + 4 */
+	SysMemBootJump = (void (*)(void)) (*((uint32_t *) ((BootAddr + 4))));
+
+	/* Set the main stack pointer to the boot loader stack */
+	__set_MSP(*(uint32_t *)BootAddr);
+	/* Call the function to jump to boot loader location */
+	SysMemBootJump();
+
+	/* Jump is done successfully */
+	while (1)
+	{
+		/* Code should never reach this loop */
+	}
+}
+
 /**
   * @brief  The application entry point.
   * @retval int
@@ -83,6 +121,11 @@ int main(void)
     }
 
     if (dataReceived) {
+
+      if (i2c_buffer[0] == 'D' && i2c_buffer[1] == 'I' && i2c_buffer[2] == 'E') {
+        JumpToBootloader();
+      }
+
       switch (ADDRESS) {
         case NODE_BUTTONS:
           HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, i2c_buffer[0] == 0 ? GPIO_PIN_RESET: GPIO_PIN_SET);
