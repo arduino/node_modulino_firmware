@@ -214,17 +214,18 @@ void configurePins() {
 }
 
 uint8_t populateBuffer() {
+  i2c_buffer[0] = ADDRESS;
   switch (ADDRESS) {
     case NODE_BUTTONS:
-      i2c_buffer[0] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0);
-      i2c_buffer[1] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1);
-      i2c_buffer[2] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2);
+      i2c_buffer[1] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0);
+      i2c_buffer[2] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1);
+      i2c_buffer[3] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2);
       return 3;
     case NODE_ENCODER:
     case NODE_ENCODER_2:
       uint16_t data = __HAL_TIM_GET_COUNTER(&htim1);
-      memcpy(i2c_buffer, &data, 2);
-      i2c_buffer[2] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == 0 ? GPIO_PIN_SET : GPIO_PIN_RESET;
+      memcpy(&i2c_buffer[1], &data, 2);
+      i2c_buffer[3] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == 0 ? GPIO_PIN_SET : GPIO_PIN_RESET;
       return 3;
     case NODE_SMARTLEDS:
       return NUM_LEDS * 4;
@@ -257,7 +258,7 @@ void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, ui
 
   if (TransferDirection == I2C_DIRECTION_RECEIVE) {
     uint8_t len = populateBuffer();
-    HAL_I2C_Slave_Seq_Transmit_IT(&hi2c1, i2c_buffer, len, I2C_FIRST_AND_LAST_FRAME);
+    HAL_I2C_Slave_Seq_Transmit_IT(&hi2c1, i2c_buffer, len + 1, I2C_FIRST_AND_LAST_FRAME);
   } else {
     uint8_t len = prepareRx();
     HAL_I2C_Slave_Seq_Receive_IT(&hi2c1, i2c_buffer, len, I2C_FIRST_AND_LAST_FRAME);
