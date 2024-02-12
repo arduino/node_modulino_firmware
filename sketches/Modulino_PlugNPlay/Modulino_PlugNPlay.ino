@@ -1,10 +1,11 @@
 #include "Wire.h"
 #include <vector>
-#include <VL53L1X.h>
+#include <VL53L1X.h>  // from Poulou
 #include <Arduino_APDS9960.h>
-
-VL53L1X tof_sensor;
-APDS9960 color_sensor(Wire1, -1);
+#include "Arduino_BMI270_BMM150.h"
+#include <Arduino_LPS22HB.h>
+#include <Arduino_HS300x.h>
+//#include <SE05X.h>  // need to provide a way to change Wire object
 
 #define Wire Wire1
 
@@ -21,7 +22,7 @@ public:
     if (address == 0xFF) {
       return false;
     }
-    Wire.requestFrom(address, howmany+1);
+    Wire.requestFrom(address, howmany + 1);
     auto start = millis();
     while ((Wire.available() == 0) && (millis() - start < 100)) {
       delay(1);
@@ -165,9 +166,14 @@ std::vector<Module*> findModules() {
 }
 
 Buttons button(62);
-Tone _tone(30);
+Tone buzzer(30);
 LEDS leds(54);
 Encoder encoder(58);
+BoschSensorClass imu(Wire1);
+VL53L1X tof_sensor;
+APDS9960 color_sensor(Wire1, -1);  // TODO: need to change to APDS9999 https://docs.broadcom.com/doc/APDS-9999-DS
+LPS22HBClass barometer(Wire1);
+HS300xClass humidity(Wire1);
 
 void setup() {
   Wire.begin();
@@ -185,6 +191,10 @@ void setup() {
   color_sensor.begin();
 
   leds.begin();
+  imu.begin();
+  imu.setContinuousMode();
+  barometer.begin();
+  //humidity.begin();
 }
 
 int skip = 0;
@@ -195,37 +205,55 @@ bool c = false;
 
 void loop() {
 
+  float x;
+  float y;
+  float z;
+
   if (encoder.pressed()) {
     skip = (skip + 1) % 5;
   }
 
   pitch = encoder.get() + tof_sensor.read();
-  //Serial.println(pitch);
-  //Serial.println(encoder.pressed());
+
+  imu.readAcceleration(x, y, z);
+  Serial.print("IMU: x ");
+  Serial.print(x, 3);
+  Serial.print("\ty ");
+  Serial.print(y, 3);
+  Serial.print("\tz ");
+  Serial.println(z, 3);
+
+  Serial.print("Pressure: " + String(barometer.readPressure()));
+  Serial.println("\tTemperature: " + String(barometer.readTemperature()));
+
+  //Serial.print("Humidity: " + String(humidity.readHumidity()));
+  //Serial.println("\tTemperature: " + String(humidity.readTemperature()));
 
   if (color_sensor.colorAvailable()) {
-    int r; int g; int b;
-    color_sensor.readColor(r,g,b);
-    leds.set(4 + skip, 50, Color(r,g,b));
+    int r;
+    int g;
+    int b;
+    color_sensor.readColor(r, g, b);
+    leds.set(4 + skip, 50, Color(r, g, b));
     leds.show();
   }
 
   if (button.get(a, b, c)) {
     if (a) {
       leds.set(1 + skip, 15, RED);
-      _tone.tone(440 + pitch, 1000);
+      buzzer.tone(440 + pitch, 1000);
     } else {
       leds.set(1 + skip, 0, RED);
     }
     if (b) {
       leds.set(2 + skip, 15, BLUE);
-      _tone.tone(880 + pitch, 1000);
+      buzzer.tone(880 + pitch, 1000);
     } else {
       leds.set(2 + skip, 0, BLUE);
     }
     if (c) {
       leds.set(3 + skip, 15, GREEN);
-      _tone.tone(1240 + pitch, 1000);
+      buzzer.tone(1240 + pitch, 1000);
     } else {
       leds.set(3 + skip, 0, GREEN);
     }
