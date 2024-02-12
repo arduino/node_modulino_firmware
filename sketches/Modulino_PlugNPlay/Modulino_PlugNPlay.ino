@@ -1,5 +1,10 @@
 #include "Wire.h"
 #include <vector>
+#include <VL53L1X.h>
+#include <Arduino_APDS9960.h>
+
+VL53L1X tof_sensor;
+APDS9960 color_sensor(Wire1, -1);
 
 #define Wire Wire1
 
@@ -168,7 +173,17 @@ void setup() {
   Wire.begin();
   Wire.setClock(100000);
   Serial.begin(115200);
-  //findModules();
+
+  findModules();
+
+  tof_sensor.setBus(&Wire1);
+  tof_sensor.init();
+  tof_sensor.setDistanceMode(VL53L1X::Short);
+  tof_sensor.setMeasurementTimingBudget(50000);
+  tof_sensor.startContinuous(50);
+
+  color_sensor.begin();
+
   leds.begin();
 }
 
@@ -184,9 +199,16 @@ void loop() {
     skip = (skip + 1) % 5;
   }
 
-  pitch = encoder.get();
-  Serial.println(pitch);
+  pitch = encoder.get() + tof_sensor.read();
+  //Serial.println(pitch);
   //Serial.println(encoder.pressed());
+
+  if (color_sensor.colorAvailable()) {
+    int r; int g; int b;
+    color_sensor.readColor(r,g,b);
+    leds.set(4 + skip, 50, Color(r,g,b));
+    leds.show();
+  }
 
   if (button.get(a, b, c)) {
     if (a) {
@@ -210,4 +232,3 @@ void loop() {
     leds.show();
   }
 }
-
