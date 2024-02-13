@@ -61,8 +61,9 @@ _Min_Stack_Size = 0x400; /* required amount of stack */
 /* Specify the memory areas */
 MEMORY
 {
-RAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 6K
-FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 16K
+RAM (xrw)       : ORIGIN = 0x20000000, LENGTH = 6K
+FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 14K
+FLASH_DATA (rx) : ORIGIN = 0x8003800, LENGTH = 2K
 }
 
 /* Define output sections */
@@ -108,6 +109,15 @@ SECTIONS
     *(.ARM.exidx*)
     __exidx_end = .;
   } >FLASH
+
+  /* Constant data goes into FLASH_DATA */
+  .userdata :
+  {
+    . = ALIGN(4);
+    *(.userdata)
+    *(.userdata*)
+    . = ALIGN(4);
+  } >FLASH_DATA
 
   .preinit_array     :
   {

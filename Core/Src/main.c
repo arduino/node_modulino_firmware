@@ -18,6 +18,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include <stdbool.h>
+#include <string.h>
 
 /* Private variables ---------------------------------------------------------*/
 
@@ -41,17 +42,19 @@ static void MX_IWDG_Init(void);
 static void MX_NVIC_Init(void);
 static void MX_TIM1_Encoder_Init(void);
 static void MX_TIM1_PWM_Init(void);
+void HAL_TIM_MspPostInit(TIM_HandleTypeDef* htim);
 static uint8_t readPinstraps();
 static void transfer(uint8_t b);
+void configurePins(void);
 
 static volatile bool dataReceived = false;
 static uint8_t i2c_buffer[128];
 
 static uint8_t ADDRESS;
+static uint8_t PINSTRAP_ADDRESS;
 
 void JumpToBootloader (void)
 {
-  uint32_t i=0;
   void (*SysMemBootJump)(void);
 
 	uint32_t BootAddr  = 0x1FFF0000;
@@ -64,11 +67,8 @@ void JumpToBootloader (void)
 	HAL_RCC_DeInit();
 
 	/* Clear Interrupt Enable Register & Interrupt Pending Register */
-	for (i=0;i<5;i++)
-	{
-		NVIC->ICER[i]=0xFFFFFFFF;
-		NVIC->ICPR[i]=0xFFFFFFFF;
-	}
+	NVIC->ICER[0]=0xFFFFFFFF;
+	NVIC->ICPR[0]=0xFFFFFFFF;
 
 	/* Re-enable all interrupts */
 	__enable_irq();
@@ -87,6 +87,9 @@ void JumpToBootloader (void)
 	}
 }
 
+static  bool returnFlashStatus = false;
+__attribute__((section(".userdata"))) uint8_t stuff[128];
+
 /**
   * @brief  The application entry point.
   * @retval int
@@ -99,7 +102,15 @@ int main(void)
   SystemClock_Config();
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  ADDRESS = readPinstraps();
+  PINSTRAP_ADDRESS = readPinstraps();
+  ADDRESS = PINSTRAP_ADDRESS;
+
+  // read user data in flash
+  // if data valid, replace ADDRESS with saved content
+  if (stuff[0] != 0xFF && stuff[0] != 0x00 && ((stuff[0] ^ 0x33) == stuff[1])) {
+    ADDRESS = stuff[0];
+  }
+
   MX_I2C1_Init(ADDRESS);
   MX_IWDG_Init();
   /* Initialize interrupts */
@@ -125,8 +136,25 @@ int main(void)
       if (i2c_buffer[0] == 'D' && i2c_buffer[1] == 'I' && i2c_buffer[2] == 'E') {
         JumpToBootloader();
       }
+      if (i2c_buffer[0] == 'C' && i2c_buffer[1] == 'F') {
+        uint8_t new_address = i2c_buffer[2];
+        FLASH_EraseInitTypeDef pEraseInit = {
+          .TypeErase = FLASH_TYPEERASE_PAGES,
+          .Page = 7,
+          .NbPages = 1,
+        };
+        uint32_t PageError;
+        HAL_FLASH_Unlock();
+        HAL_FLASHEx_Erase(&pEraseInit, &PageError);
+        uint8_t data[8] = {new_address, new_address ^ 0x33, new_address, new_address ^ 0x33, new_address, new_address ^ 0x33, new_address, new_address ^ 0x33 };
+        HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, (uint32_t)&stuff[0], *((uint64_t*)data));
+        returnFlashStatus = true;
+        dataReceived = false;
+        HAL_FLASH_Lock();
+        NVIC_SystemReset();
+      }
 
-      switch (ADDRESS) {
+      switch (PINSTRAP_ADDRESS) {
         case NODE_BUTTONS:
           HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, i2c_buffer[0] == 0 ? GPIO_PIN_RESET: GPIO_PIN_SET);
           HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, i2c_buffer[1] == 0 ? GPIO_PIN_RESET: GPIO_PIN_SET);
@@ -180,7 +208,7 @@ void transfer(uint8_t b) {
 
 void configurePins() {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-  switch (ADDRESS) {
+  switch (PINSTRAP_ADDRESS) {
     case NODE_BUTTONS:
       GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2;
       GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -214,8 +242,12 @@ void configurePins() {
 }
 
 uint8_t populateBuffer() {
-  i2c_buffer[0] = ADDRESS;
-  switch (ADDRESS) {
+  if (returnFlashStatus) {
+    returnFlashStatus = false;
+    return 6;
+  }
+  i2c_buffer[0] = PINSTRAP_ADDRESS;
+  switch (PINSTRAP_ADDRESS) {
     case NODE_BUTTONS:
       i2c_buffer[1] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0);
       i2c_buffer[2] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1);
@@ -230,10 +262,11 @@ uint8_t populateBuffer() {
     case NODE_SMARTLEDS:
       return NUM_LEDS * 4;
   }
+  return 3;
 }
 
 uint8_t prepareRx() {
-  switch (ADDRESS) {
+  switch (PINSTRAP_ADDRESS) {
     case NODE_BUTTONS:
       return 3;
     case NODE_BUZZER:
@@ -244,6 +277,7 @@ uint8_t prepareRx() {
     case NODE_SMARTLEDS:
       return NUM_LEDS * 4;
   }
+  return 3;
 }
 
 void HAL_I2C_SlaveTxCpltCallback(I2C_HandleTypeDef *hi2c) {
