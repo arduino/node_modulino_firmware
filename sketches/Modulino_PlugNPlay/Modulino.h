@@ -1,0 +1,245 @@
+#include "Wire.h"
+#include <vector>
+#include <VL53L1X.h>  // from Poulou
+#include <Arduino_APDS9960.h>
+#include "Arduino_BMI270_BMM150.h"
+#include <Arduino_LPS22HB.h>
+#include <Arduino_HS300x.h>
+//#include <SE05X.h>  // need to provide a way to change Wire object
+
+#define Wire Wire1
+
+class ModulinoClass {
+public:
+  void begin() {
+    Wire1.begin();
+    Wire1.setClock(100000);
+  }
+};
+
+class Module : public Printable {
+public:
+  Module(uint8_t address = 0xFF, char* name = "")
+    : address(address), name(name) {}
+  bool begin() {
+    if (address == 0xFF) {
+      address = discover() / 2;  // divide by 2 to match address in fw main.c
+    }
+  }
+  virtual uint8_t discover() {
+    return 0xFF;
+  }
+  operator bool() {
+    return address != 0xFF;
+  }
+  bool read(uint8_t* buf, int howmany) {
+    if (address == 0xFF) {
+      return false;
+    }
+    Wire.requestFrom(address, howmany + 1);
+    auto start = millis();
+    while ((Wire.available() == 0) && (millis() - start < 100)) {
+      delay(1);
+    }
+    if (Wire.available() < howmany) {
+      return false;
+    }
+    pinstrap_address = Wire.read();
+    for (int i = 0; i < howmany; i++) {
+      buf[i] = Wire.read();
+    }
+    while (Wire.available()) {
+      Wire.read();
+    }
+    return true;
+  }
+  bool write(uint8_t* buf, int howmany) {
+    if (address == 0xFF) {
+      return false;
+    }
+    Wire.beginTransmission(address);
+    for (int i = 0; i < howmany; i++) {
+      Wire.write(buf[i]);
+    }
+    Wire.endTransmission();
+    return true;
+  }
+  bool nonDefaultAddress() {
+    return (pinstrap_address != address);
+  }
+  virtual size_t printTo(Print& p) const {
+    return p.print(name);
+  }
+  bool scan(uint8_t addr) {
+    Wire.beginTransmission(addr / 2);  // multply by 2 to match address in fw main.c
+    auto ret = Wire.endTransmission();
+    if (ret == 0) {
+      // could also ask for 1 byte and check if it's truely a modulino of that kind
+      return true;
+    }
+    return false;
+  }
+private:
+  uint8_t address;
+  uint8_t pinstrap_address;
+  char* name;
+};
+
+class Buttons : public Module {
+public:
+  Buttons(uint8_t address = 0xFF)
+    : Module(address, "BUTTONS") {}
+  bool get(bool& a, bool& b, bool& c) {
+    uint8_t buf[3];
+    auto res = read((uint8_t*)buf, 3);
+    a = buf[0];
+    b = buf[1];
+    c = buf[2];
+    auto ret = res && (a != last_a || b != last_b || c != last_c);
+    last_a = a;
+    last_b = b;
+    last_c = c;
+    return ret;
+  }
+  virtual uint8_t discover() {
+    for (int i = 0; i < match.size(); i++) {
+      if (scan(match[i])) {
+        return match[i];
+      }
+    }
+  }
+private:
+  bool last_a, last_b, last_c;
+protected:
+  std::vector<uint8_t> match = { 0x7C };  // same as fw main.c
+};
+
+class Tone : public Module {
+public:
+  Tone(uint8_t address = 0xFF)
+    : Module(address, "BUZZER") {}
+  void tone(size_t freq, size_t len_ms) {
+    uint8_t buf[8];
+    memcpy(&buf[0], &freq, 4);
+    memcpy(&buf[4], &len_ms, 4);
+    write(buf, 8);
+  }
+  void noTone() {
+    uint8_t buf[8];
+    memset(&buf[0], 0, 8);
+    write(buf, 8);
+  }
+  virtual uint8_t discover() {
+    for (int i = 0; i < match.size(); i++) {
+      if (scan(match[i])) {
+        return match[i];
+      }
+    }
+  }
+protected:
+  std::vector<uint8_t> match = { 0x3C };  // same as fw main.c
+};
+
+class Color {
+public:
+  Color(uint8_t r, uint8_t g, uint8_t b)
+    : r(r), g(g), b(b) {}
+  operator uint32_t() {
+    return (b << 8 | g << 16 | r << 24);
+  }
+private:
+  uint8_t r, g, b;
+};
+
+class LEDS : public Module {
+public:
+  LEDS(uint8_t address = 0xFF)
+    : Module(address, "LEDS") {
+    memset(data, 0xE0, 40);
+  }
+  bool begin() {
+    Module::begin();
+    show();
+  }
+  void set(int idx, uint8_t brightness, Color rgb) {
+    data[idx] = (uint32_t)rgb | brightness | 0xE0;
+  }
+  void show() {
+    write((uint8_t*)data, 10 * 4);
+  }
+  virtual uint8_t discover() {
+    for (int i = 0; i < match.size(); i++) {
+      if (scan(match[i])) {
+        return match[i];
+      }
+    }
+  }
+private:
+  uint32_t data[10];
+protected:
+  std::vector<uint8_t> match = { 0x6C };
+};
+
+
+class Encoder : public Module {
+public:
+  Encoder(uint8_t address = 0xFF)
+    : Module(address, "ENCODER") {}
+  int16_t get() {
+    uint8_t buf[3];
+    auto res = read(buf, 3);
+    if (res == false) {
+      return 0;
+    }
+    _pressed = (buf[2] != 0);
+    int16_t ret = buf[0] | (buf[1] << 8);
+    return ret;
+  }
+  bool pressed() {
+    return _pressed;
+  }
+  virtual uint8_t discover() {
+    for (int i = 0; i < match.size(); i++) {
+      if (scan(match[i])) {
+        return match[i];
+      }
+    }
+  }
+private:
+  bool _pressed = false;
+protected:
+  std::vector<uint8_t> match = { 0x74, 0x76 };
+};
+
+extern Color RED;
+extern Color BLUE;
+extern Color GREEN;
+extern Color VIOLET;
+
+extern ModulinoClass Modulino;
+
+/*
+extern Buttons buttons;
+extern Tone buzzer;
+extern LEDS leds;
+extern Encoder encoder;
+*/
+extern BoschSensorClass imu;
+extern VL53L1X tof_sensor;
+extern APDS9960 color;  // TODO: need to change to APDS9999 https://docs.broadcom.com/doc/APDS-9999-DS
+extern LPS22HBClass barometer;
+extern HS300xClass humidity;
+
+class Distance {
+public:
+  bool begin() {
+    tof_sensor.setBus(&Wire1);
+    tof_sensor.init();
+    tof_sensor.setDistanceMode(VL53L1X::Short);
+    tof_sensor.setMeasurementTimingBudget(50000);
+    tof_sensor.startContinuous(50);
+  }
+  float get() {
+    return tof_sensor.read();
+  }
+};

@@ -1,6 +1,7 @@
 #include "Wire.h"
 
-const uint8_t new_address = 69;
+// Setting new_address to 0 means that the module will get back its original address
+const uint8_t new_address = 0;
 
 uint8_t address;
 
