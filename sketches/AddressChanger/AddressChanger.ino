@@ -1,6 +1,6 @@
 #include "Wire.h"
 
-const uint8_t new_address = 44;
+const uint8_t new_address = 69;
 
 uint8_t address;
 
@@ -21,6 +21,21 @@ void setup() {
   }
 }
 
+String pinstrapToName(uint8_t pinstrap) {
+  switch (pinstrap) {
+    case 0x3C:
+      return "BUZZER";
+    case 0x7C:
+      return "BUTTONS";
+    case 0x76:
+    case 0x74:
+      return "ENCODER";
+    case 0x6C:
+      return "SMARTLEDS";
+  }
+  return "UNKNOWN";
+}
+
 void loop() {
   // put your main code here, to run repeatedly:
   if (Serial.available()) {
@@ -31,6 +46,9 @@ void loop() {
       Wire1.beginTransmission(address);
       Wire1.write(data, 8);
       Wire1.endTransmission();
+      delay(1000);
+      Wire1.requestFrom(new_address, 1);
+      Serial.println("Device type " + pinstrapToName(Wire1.read()) + " at new address " + String(new_address));
     }
   }
 }
