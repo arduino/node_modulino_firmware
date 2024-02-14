@@ -8,6 +8,7 @@ Distance distance;
 
 void setup() {
 
+  Serial.begin(115200);
   Modulino.begin();
 
   color.begin();
