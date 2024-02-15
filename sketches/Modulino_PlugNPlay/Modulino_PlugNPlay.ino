@@ -59,12 +59,12 @@ void loop() {
   //Serial.print("Humidity: " + String(humidity.readHumidity()));
   //Serial.println("\tTemperature: " + String(humidity.readTemperature()));
 
-  if (color.colorAvailable()) {
+  if (color.available()) {
     int r;
     int g;
     int b;
-    color.readColor(r, g, b);
-    leds.set(4 + skip, 50, Color(r, g, b));
+    color.read(r, g, b);
+    leds.set(4 + skip, 255, Color(r, g, b));
     leds.show();
   }
 
