@@ -223,7 +223,7 @@ void configurePins() {
     case NODE_ENCODER_2:
       GPIO_InitStruct.Pin = GPIO_PIN_2;
       GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-      GPIO_InitStruct.Pull = GPIO_NOPULL;
+      GPIO_InitStruct.Pull = GPIO_PULLUP;
       GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
       HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
       MX_TIM1_Encoder_Init();

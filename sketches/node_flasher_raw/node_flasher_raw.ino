@@ -134,7 +134,7 @@ final_ack:
 int sendReset() {
   uint8_t buf[3] = { 'D', 'I', 'E' };
   int ret;
-  for (int i = 30; i < 128; i++) {
+  for (int i = 30; i < 100; i++) {
     Wire1.beginTransmission(i);
     ret = Wire1.endTransmission();
     if (ret != 2) {
@@ -173,7 +173,7 @@ void setup() {
     matrix.textFont(Font_4x6);
     matrix.beginText(0, 1, 0xFFFFFF);
     matrix.println(text);
-    matrix.endText(SCROLL_LEFT);
+    matrix.endText();
 
     matrix.endDraw();
     while (1)
@@ -224,7 +224,7 @@ void setup() {
   matrix.textFont(Font_4x6);
   matrix.beginText(0, 1, 0xFFFFFF);
   matrix.println(text);
-  matrix.endText(SCROLL_LEFT);
+  matrix.endText();
 
   matrix.endDraw();
 
