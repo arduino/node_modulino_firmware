@@ -101,6 +101,14 @@ public:
     last_c = c;
     return ret;
   }
+  void set(bool a, bool b, bool c) {
+    uint8_t buf[3];
+    buf[0] = a;
+    buf[1] = b;
+    buf[2] = c;
+    write((uint8_t*)buf, 3);
+    return;
+  }
   virtual uint8_t discover() {
     for (int i = 0; i < match.size(); i++) {
       if (scan(match[i])) {
