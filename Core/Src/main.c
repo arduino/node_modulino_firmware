@@ -176,26 +176,30 @@ int main(void)
           HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
           break;
         case NODE_SMARTLEDS:
-          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, GPIO_PIN_RESET); //DATA
-          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET); //CLOCK
-          transfer(0);
-          transfer(0);
-          transfer(0);
-          transfer(0);
-          for (int i = 0; i < NUM_LEDS * 4; i++) {
-            transfer(i2c_buffer[i]);
-          }
-          for (int i = 0; i < (NUM_LEDS + 14)/16; i++)
-          {
-            transfer(0);
-          }
-          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, GPIO_PIN_RESET);
-          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET);
+          show_leds(i2c_buffer);
           break;
       }
       dataReceived = false;
     }
   }
+}
+
+void show_leds(uint8_t* data) {
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, GPIO_PIN_RESET); //DATA
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET); //CLOCK
+  transfer(0);
+  transfer(0);
+  transfer(0);
+  transfer(0);
+  for (int i = 0; i < NUM_LEDS * 4; i++) {
+    transfer(data[i]);
+  }
+  for (int i = 0; i < (NUM_LEDS + 14)/16; i++)
+  {
+    transfer(0);
+  }
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET);
 }
 
 void transfer(uint8_t b) {
@@ -238,6 +242,8 @@ void configurePins() {
       GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
       HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
       HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_SET);
+      memset(i2c_buffer, 0xE0, NUM_LEDS * 4);
+      show_leds(i2c_buffer);
     }
 }
 
