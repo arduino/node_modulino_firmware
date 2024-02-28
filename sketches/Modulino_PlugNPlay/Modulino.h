@@ -7,15 +7,20 @@
 #include <Arduino_HS300x.h>
 //#include <SE05X.h>  // need to provide a way to change Wire object
 
-#define Wire Wire1
-
 class ModulinoClass {
 public:
-  void begin() {
-    Wire1.begin();
-    Wire1.setClock(100000);
+  void begin(HardwareI2C& wire = Wire1) {
+    _wire = &wire;
+    _wire->begin();
+    _wire->setClock(100000);
   }
+  friend class Module;
+  friend class Distance;
+protected:
+  HardwareI2C* _wire;
 };
+
+extern ModulinoClass Modulino;
 
 class Module : public Printable {
 public:
@@ -32,24 +37,27 @@ public:
   operator bool() {
     return address != 0xFF;
   }
+  static HardwareI2C* getWire() {
+    return Modulino._wire;
+  }
   bool read(uint8_t* buf, int howmany) {
     if (address == 0xFF) {
       return false;
     }
-    Wire.requestFrom(address, howmany + 1);
+    Modulino._wire->requestFrom(address, howmany + 1);
     auto start = millis();
-    while ((Wire.available() == 0) && (millis() - start < 100)) {
+    while ((Modulino._wire->available() == 0) && (millis() - start < 100)) {
       delay(1);
     }
-    if (Wire.available() < howmany) {
+    if (Modulino._wire->available() < howmany) {
       return false;
     }
-    pinstrap_address = Wire.read();
+    pinstrap_address = Modulino._wire->read();
     for (int i = 0; i < howmany; i++) {
-      buf[i] = Wire.read();
+      buf[i] = Modulino._wire->read();
     }
-    while (Wire.available()) {
-      Wire.read();
+    while (Modulino._wire->available()) {
+      Modulino._wire->read();
     }
     return true;
   }
@@ -57,11 +65,11 @@ public:
     if (address == 0xFF) {
       return false;
     }
-    Wire.beginTransmission(address);
+    Modulino._wire->beginTransmission(address);
     for (int i = 0; i < howmany; i++) {
-      Wire.write(buf[i]);
+      Modulino._wire->write(buf[i]);
     }
-    Wire.endTransmission();
+    Modulino._wire->endTransmission();
     return true;
   }
   bool nonDefaultAddress() {
@@ -71,8 +79,8 @@ public:
     return p.print(name);
   }
   bool scan(uint8_t addr) {
-    Wire.beginTransmission(addr / 2);  // multply by 2 to match address in fw main.c
-    auto ret = Wire.endTransmission();
+    Modulino._wire->beginTransmission(addr / 2);  // multply by 2 to match address in fw main.c
+    auto ret = Modulino._wire->endTransmission();
     if (ret == 0) {
       // could also ask for 1 byte and check if it's truely a modulino of that kind
       return true;
@@ -309,10 +317,10 @@ extern APDS9999 color;  // TODO: need to change to APDS9999 https://docs.broadco
 extern LPS22HBClass barometer;
 extern HS300xClass humidity;
 
-class Distance {
+class Distance : public Module {
 public:
   bool begin() {
-    tof_sensor.setBus(&Wire1);
+    tof_sensor.setBus((TwoWire*)getWire());
     tof_sensor.init();
     tof_sensor.setDistanceMode(VL53L1X::Short);
     tof_sensor.setMeasurementTimingBudget(50000);
