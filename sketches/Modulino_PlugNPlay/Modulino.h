@@ -163,17 +163,16 @@ class LEDS : public Module {
 public:
   LEDS(uint8_t address = 0xFF)
     : Module(address, "LEDS") {
-    memset(data, 0xE0, 40);
+    memset(data, 0, 32);
   }
   bool begin() {
     Module::begin();
-    show();
   }
   void set(int idx, uint8_t brightness, Color rgb) {
     data[idx] = (uint32_t)rgb | brightness | 0xE0;
   }
   void show() {
-    write((uint8_t*)data, 10 * 4);
+    write((uint8_t*)data, 8 * 4);
   }
   virtual uint8_t discover() {
     for (int i = 0; i < match.size(); i++) {
@@ -183,7 +182,7 @@ public:
     }
   }
 private:
-  uint32_t data[10];
+  uint32_t data[8];
 protected:
   std::vector<uint8_t> match = { 0x6C };
 };
