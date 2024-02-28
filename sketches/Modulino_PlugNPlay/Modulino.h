@@ -229,6 +229,7 @@ public:
     return ret;
   }
   bool pressed() {
+    get();
     return _pressed;
   }
   virtual uint8_t discover() {
