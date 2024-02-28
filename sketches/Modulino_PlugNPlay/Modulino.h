@@ -10,6 +10,14 @@
 class ModulinoClass {
 public:
   void begin(HardwareI2C& wire = Wire1) {
+#ifdef ARDUINO_UNOR4_WIFI
+    // unlock Wire1 bus at begin since we don't know the state of the system
+    pinMode(WIRE1_SCL_PIN, OUTPUT);
+    for (int i = 0; i < 20; i++) {
+      digitalWrite(WIRE1_SCL_PIN, HIGH);
+      digitalWrite(WIRE1_SCL_PIN, LOW);
+    }
+#endif
     _wire = &wire;
     _wire->begin();
     _wire->setClock(100000);
