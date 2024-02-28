@@ -164,9 +164,9 @@ protected:
   std::vector<uint8_t> match = { 0x3C };  // same as fw main.c
 };
 
-class Color {
+class ModulinoColor {
 public:
-  Color(uint8_t r, uint8_t g, uint8_t b)
+  ModulinoColor(uint8_t r, uint8_t g, uint8_t b)
     : r(r), g(g), b(b) {}
   operator uint32_t() {
     return (b << 8 | g << 16 | r << 24);
@@ -184,14 +184,20 @@ public:
   bool begin() {
     Module::begin();
   }
-  void set(int idx, uint8_t brightness, Color rgb) {
+  void set(int idx, ModulinoColor rgb, uint8_t brightness = 128) {
     data[idx] = (uint32_t)rgb | brightness | 0xE0;
   }
-  void show() {
-    write((uint8_t*)data, NUMLEDS * 4);
+  void set(int idx, uint8_t r, uint8_t g, uint8_t b, uint8_t brightness = 128) {
+    set(idx, ModulinoColor(r,g,b), brightness);
+  }
+  void clear(int idx) {
+    set(idx, ModulinoColor(0,0,0), 0);
   }
   void clear() {
     memset((uint8_t*)data, 0xE0, NUMLEDS * 4);
+  }
+  void show() {
+    write((uint8_t*)data, NUMLEDS * 4);
   }
   virtual uint8_t discover() {
     for (int i = 0; i < match.size(); i++) {
@@ -309,11 +315,11 @@ private:
 };
 
 
-extern Color RED;
-extern Color BLUE;
-extern Color GREEN;
-extern Color VIOLET;
-extern Color WHITE;
+extern ModulinoColor RED;
+extern ModulinoColor BLUE;
+extern ModulinoColor GREEN;
+extern ModulinoColor VIOLET;
+extern ModulinoColor WHITE;
 
 extern ModulinoClass Modulino;
 

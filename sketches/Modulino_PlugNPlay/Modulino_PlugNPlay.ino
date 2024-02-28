@@ -64,28 +64,28 @@ void loop() {
     int g;
     int b;
     color.read(r, g, b);
-    leds.set(4 + skip, 255, Color(r, g, b));
+    leds.set(4 + skip, r, g, b, 255);
     leds.show();
   }
 
   if (buttons.get(a, b, c)) {
     if (a) {
-      leds.set(1 + skip, 15, RED);
+      leds.set(1 + skip, RED, 15);
       buzzer.tone(440 + pitch, 1000);
     } else {
-      leds.set(1 + skip, 0, RED);
+      leds.clear(1 + skip);
     }
     if (b) {
-      leds.set(2 + skip, 15, BLUE);
+      leds.set(2 + skip, BLUE, 15);
       buzzer.tone(880 + pitch, 1000);
     } else {
-      leds.set(2 + skip, 0, BLUE);
+      leds.clear(2 + skip);
     }
     if (c) {
-      leds.set(3 + skip, 15, GREEN);
+      leds.set(3 + skip, GREEN, 15);
       buzzer.tone(1240 + pitch, 1000);
     } else {
-      leds.set(3 + skip, 0, GREEN);
+      leds.clear(3 + skip);
     }
     leds.show();
   }
