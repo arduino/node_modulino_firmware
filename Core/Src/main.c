@@ -31,7 +31,7 @@ TIM_HandleTypeDef htim1;
 #define NODE_ENCODER    0x76
 #define NODE_ENCODER_2  0x74
 #define NODE_SMARTLEDS  0x6C
-#define NUM_LEDS        10
+#define NUM_LEDS        8
 
 
 /* Private function prototypes -----------------------------------------------*/
