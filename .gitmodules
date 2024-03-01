@@ -1,0 +1,3 @@
+[submodule "sketches/libraries/Modulino"]
+	path = sketches/libraries/Modulino
+	url = git@github.com:arduino-libraries/Modulino
