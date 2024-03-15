@@ -33,6 +33,11 @@ TIM_HandleTypeDef htim1;
 #define NODE_SMARTLEDS  0x6C
 #define NUM_LEDS        8
 
+#define EVENT_COUNT_QUANTUMS_DEFAULT      20
+#define QUANTUM_DEFUALT                   100
+
+static uint8_t QUANTUM = QUANTUM_DEFUALT;
+static uint8_t event_count_quantums = EVENT_COUNT_QUANTUMS_DEFAULT;
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
@@ -52,6 +57,9 @@ static uint8_t i2c_buffer[128];
 
 static uint8_t ADDRESS;
 static uint8_t PINSTRAP_ADDRESS;
+
+static uint8_t buttons_buffer[6];
+static uint8_t* buttons_history;
 
 void JumpToBootloader (void)
 {
@@ -121,6 +129,10 @@ int main(void)
   HAL_I2C_EnableListen_IT(&hi2c1);
 
   uint32_t endTone = 0;
+  uint32_t buttonEvents = 0;
+
+  buttons_history = malloc(3 * event_count_quantums);
+  uint8_t buttons_history_idx = 0;
 
   /* Infinite loop */
   while (1)
@@ -129,6 +141,47 @@ int main(void)
     if (endTone != 0 && HAL_GetTick() > endTone) {
       HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
       endTone = 0;
+    }
+
+    if (HAL_GetTick() > buttonEvents + QUANTUM) {
+      buttons_history[3*buttons_history_idx + 0] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0);
+      buttons_history[3*buttons_history_idx + 1] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1);
+      buttons_history[3*buttons_history_idx + 2] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2);
+
+      if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0)) {
+        buttons_buffer[0]++;
+      } else {
+        buttons_buffer[0] = 0;
+      }
+      if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1)) {
+        buttons_buffer[1]++;
+      } else {
+        buttons_buffer[1] = 0;
+      }
+      if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2)) {
+        buttons_buffer[2]++;
+      } else {
+        buttons_buffer[2] = 0;
+      }
+
+      buttons_buffer[3] = 0;
+      buttons_buffer[4] = 0;
+      buttons_buffer[5] = 0;
+
+      for (int j = 0; j < 3; j++) {
+        // count events in the past; conts both 0 -> 1 and 1 -> 0 transactions
+        for (int i = 0; i < event_count_quantums - 1; i++) {
+          if (buttons_history[3*i + j] != buttons_history[3*(i+1) + j]) {
+            buttons_buffer[j+3]++;
+          }
+        }
+      }
+      buttons_buffer[3] /= 2;
+      buttons_buffer[4] /= 2;
+      buttons_buffer[5] /= 2;
+
+      buttonEvents = HAL_GetTick();
+      buttons_history_idx = (buttons_history_idx++)%(event_count_quantums);
     }
 
     if (dataReceived) {
@@ -156,9 +209,17 @@ int main(void)
 
       switch (PINSTRAP_ADDRESS) {
         case NODE_BUTTONS:
-          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, i2c_buffer[0] == 0 ? GPIO_PIN_RESET: GPIO_PIN_SET);
-          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, i2c_buffer[1] == 0 ? GPIO_PIN_RESET: GPIO_PIN_SET);
-          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, i2c_buffer[2] == 0 ? GPIO_PIN_RESET: GPIO_PIN_SET);
+          // TODO: change these with the actual output pins from v2
+          if (i2c_buffer[0] != 0xFF) {
+            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, i2c_buffer[0] == 0 ? GPIO_PIN_RESET: GPIO_PIN_SET);
+            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, i2c_buffer[1] == 0 ? GPIO_PIN_RESET: GPIO_PIN_SET);
+            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, i2c_buffer[2] == 0 ? GPIO_PIN_RESET: GPIO_PIN_SET);
+          }
+          if (i2c_buffer[3] != 0xFF) {
+            QUANTUM = i2c_buffer[3];
+            event_count_quantums = i2c_buffer[4];
+            buttons_history = realloc(buttons_history, (3*event_count_quantums));
+          }
           break;
         case NODE_BUZZER:
           uint32_t frequency;
@@ -247,6 +308,8 @@ void configurePins() {
     }
 }
 
+uint32_t last_buttons_read = 0;
+
 uint8_t populateBuffer() {
   if (returnFlashStatus) {
     returnFlashStatus = false;
@@ -255,10 +318,15 @@ uint8_t populateBuffer() {
   i2c_buffer[0] = PINSTRAP_ADDRESS;
   switch (PINSTRAP_ADDRESS) {
     case NODE_BUTTONS:
-      i2c_buffer[1] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0);
-      i2c_buffer[2] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1);
-      i2c_buffer[3] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2);
-      return 3;
+      memcpy(&i2c_buffer[1], buttons_buffer, 6);
+      // Clear on read registers
+      if (HAL_GetTick() >  (last_buttons_read + (QUANTUM * event_count_quantums))) {
+        buttons_buffer[3] = 0;
+        buttons_buffer[4] = 0;
+        buttons_buffer[5] = 0;
+        last_buttons_read = HAL_GetTick();
+      }
+      return 6;
     case NODE_ENCODER:
     case NODE_ENCODER_2:
       uint16_t data = __HAL_TIM_GET_COUNTER(&htim1);
@@ -274,7 +342,7 @@ uint8_t populateBuffer() {
 uint8_t prepareRx() {
   switch (PINSTRAP_ADDRESS) {
     case NODE_BUTTONS:
-      return 3;
+      return 5;
     case NODE_BUZZER:
       return 8;
     case NODE_ENCODER:
