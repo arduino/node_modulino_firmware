@@ -53,6 +53,8 @@ static uint8_t i2c_buffer[128];
 static uint8_t ADDRESS;
 static uint8_t PINSTRAP_ADDRESS;
 
+static int16_t encoder_last_reset_status = 0;
+
 void JumpToBootloader (void)
 {
   void (*SysMemBootJump)(void);
@@ -175,6 +177,11 @@ int main(void)
           //HAL_TIM_PWM_ConfigChannel(&htim1, &sConfig, TIM_CHANNEL_1);
           HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
           break;
+        case NODE_ENCODER:
+        case NODE_ENCODER_2:
+          memcpy(&encoder_last_reset_status, &i2c_buffer[0], 2);
+          encoder_last_reset_status += __HAL_TIM_GET_COUNTER(&htim1);
+          break;
         case NODE_SMARTLEDS:
           show_leds(i2c_buffer);
           break;
@@ -261,7 +268,7 @@ uint8_t populateBuffer() {
       return 3;
     case NODE_ENCODER:
     case NODE_ENCODER_2:
-      uint16_t data = __HAL_TIM_GET_COUNTER(&htim1);
+      int16_t data = __HAL_TIM_GET_COUNTER(&htim1) - encoder_last_reset_status;
       memcpy(&i2c_buffer[1], &data, 2);
       i2c_buffer[3] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == 0 ? GPIO_PIN_SET : GPIO_PIN_RESET;
       return 3;
