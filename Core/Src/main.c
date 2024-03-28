@@ -158,9 +158,9 @@ int main(void)
 
       switch (PINSTRAP_ADDRESS) {
         case NODE_BUTTONS:
-          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, i2c_buffer[0] == 0 ? GPIO_PIN_RESET: GPIO_PIN_SET);
-          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, i2c_buffer[1] == 0 ? GPIO_PIN_RESET: GPIO_PIN_SET);
-          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, i2c_buffer[2] == 0 ? GPIO_PIN_RESET: GPIO_PIN_SET);
+          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, i2c_buffer[0] == 0 ? GPIO_PIN_RESET: GPIO_PIN_SET);
+          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, i2c_buffer[1] == 0 ? GPIO_PIN_RESET: GPIO_PIN_SET);
+          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, i2c_buffer[2] == 0 ? GPIO_PIN_RESET: GPIO_PIN_SET);
           break;
         case NODE_BUZZER:
           uint32_t frequency;
@@ -221,7 +221,7 @@ void configurePins() {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
   switch (PINSTRAP_ADDRESS) {
     case NODE_BUTTONS:
-      GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2;
+      GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5;
       GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
       GPIO_InitStruct.Pull = GPIO_NOPULL;
       GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
