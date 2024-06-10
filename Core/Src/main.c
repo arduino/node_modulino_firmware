@@ -323,14 +323,6 @@ void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c) {
 }
 
 void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c) {
-  /** Error_Handler() function is called when error occurs.
-    * 1- When Slave doesn't acknowledge its address, Master restarts communication.
-    * 2- When Master doesn't acknowledge the last data transferred, Slave doesn't care
-    */
-  if (HAL_I2C_GetError(hi2c) != HAL_I2C_ERROR_AF)
-  {
-    Error_Handler();
-  }
 }
 
 /**
