@@ -167,7 +167,12 @@ int main(void)
           uint32_t duration;
           memcpy(&frequency, &i2c_buffer[0], sizeof(frequency));
           memcpy(&duration, &i2c_buffer[4], sizeof(duration));
-          endTone = HAL_GetTick() + duration;
+          
+          // If duration is set to 0 let the tone play indefinitely
+          // unless the frequency is also 0 which is the case when calling the noTone function.
+          if((duration > 0 && frequency > 0) || (duration == 0 && frequency == 0)) {
+            endTone = HAL_GetTick() + duration;
+          }
 
           // TODO: make the prescaler precise and configurable
           uint32_t val = 0xFFFF * 180 / frequency;
