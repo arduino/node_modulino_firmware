@@ -46,6 +46,7 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef* htim);
 static uint8_t readPinstraps();
 static void transfer(uint8_t b);
 void configurePins(void);
+void show_leds(uint8_t* data);
 
 static volatile bool dataReceived = false;
 static uint8_t i2c_buffer[128];
