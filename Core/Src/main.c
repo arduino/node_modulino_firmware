@@ -19,18 +19,21 @@
 #include "main.h"
 #include <stdbool.h>
 #include <string.h>
+#include <stm32c0xx_ll_adc.h>
 
 /* Private variables ---------------------------------------------------------*/
 
 I2C_HandleTypeDef hi2c1;
 IWDG_HandleTypeDef hiwdg;
 TIM_HandleTypeDef htim1;
+ADC_HandleTypeDef hadc1;
 
 #define NODE_BUTTONS    0x7C
 #define NODE_BUZZER     0x3C
 #define NODE_ENCODER    0x76
 #define NODE_ENCODER_2  0x74
 #define NODE_SMARTLEDS  0x6C
+#define NODE_JOYSTICK   0x58
 #define NUM_LEDS        8
 
 
@@ -46,6 +49,7 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef* htim);
 static uint8_t readPinstraps();
 static void transfer(uint8_t b);
 void configurePins(void);
+void configureADC(ADC_HandleTypeDef* hadc);
 void show_leds(uint8_t* data);
 
 static volatile bool dataReceived = false;
@@ -93,6 +97,8 @@ void JumpToBootloader (void)
 static  bool returnFlashStatus = false;
 __attribute__((section(".userdata"))) uint8_t stuff[128];
 
+static volatile uint8_t adc_data[2];
+
 /**
   * @brief  The application entry point.
   * @retval int
@@ -132,6 +138,30 @@ int main(void)
     if (endTone != 0 && HAL_GetTick() > endTone) {
       HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
       endTone = 0;
+    }
+
+    if (PINSTRAP_ADDRESS == NODE_JOYSTICK) {
+      ADC_ChannelConfTypeDef sConfig = {0};
+      sConfig.Channel = ADC_CHANNEL_0;
+      sConfig.Rank = ADC_REGULAR_RANK_1;
+      HAL_ADC_ConfigChannel(&hadc1, &sConfig);
+      sConfig.Channel = ADC_CHANNEL_1;
+      sConfig.Rank = ADC_RANK_NONE;
+      HAL_ADC_ConfigChannel(&hadc1, &sConfig);
+      HAL_ADC_Start(&hadc1);
+      HAL_ADC_PollForConversion(&hadc1, 10);
+      adc_data[0] = HAL_ADC_GetValue(&hadc1);
+      HAL_ADC_Stop(&hadc1);
+      sConfig.Channel = ADC_CHANNEL_0;
+      sConfig.Rank = ADC_RANK_NONE;
+      HAL_ADC_ConfigChannel(&hadc1, &sConfig);
+      sConfig.Channel = ADC_CHANNEL_1;
+      sConfig.Rank = ADC_REGULAR_RANK_1;
+      HAL_ADC_ConfigChannel(&hadc1, &sConfig);
+      HAL_ADC_Start(&hadc1);
+      HAL_ADC_PollForConversion(&hadc1, 10);
+      adc_data[1] = HAL_ADC_GetValue(&hadc1);
+      HAL_ADC_Stop(&hadc1);
     }
 
     if (dataReceived) {
@@ -186,6 +216,8 @@ int main(void)
           break;
         case NODE_SMARTLEDS:
           show_leds(i2c_buffer);
+          break;
+        case NODE_JOYSTICK:
           break;
       }
       dataReceived = false;
@@ -258,6 +290,14 @@ void configurePins() {
       HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_SET);
       memset(i2c_buffer, 0xE0, NUM_LEDS * 4);
       show_leds(i2c_buffer);
+    case NODE_JOYSTICK:
+      GPIO_InitStruct.Pin = GPIO_PIN_2;
+      GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+      GPIO_InitStruct.Pull = GPIO_PULLUP;
+      GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+      HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+      configureADC(&hadc1);
+      break;
     }
 }
 
@@ -281,6 +321,11 @@ uint8_t populateBuffer() {
       return 3;
     case NODE_SMARTLEDS:
       return NUM_LEDS * 4;
+    case NODE_JOYSTICK:
+      i2c_buffer[1] = adc_data[0];
+      i2c_buffer[2] = adc_data[1];
+      i2c_buffer[3] = !HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2);
+      return 3;
   }
   return 3;
 }
@@ -373,6 +418,8 @@ static void MX_NVIC_Init(void)
   /* I2C1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(I2C1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(I2C1_IRQn);
+  HAL_NVIC_SetPriority(ADC1_IRQn, 1, 0);
+  HAL_NVIC_EnableIRQ(ADC1_IRQn);
 }
 
 /**
