@@ -32,6 +32,7 @@ ADC_HandleTypeDef hadc1;
 #define NODE_BUZZER     0x3C
 #define NODE_ENCODER    0x76
 #define NODE_ENCODER_2  0x74
+#define NODE_VIBRO      0x70
 #define NODE_SMARTLEDS  0x6C
 #define NODE_JOYSTICK   0x58
 #define NUM_LEDS        8
@@ -173,7 +174,7 @@ int main(void)
         uint8_t new_address = i2c_buffer[2];
         FLASH_EraseInitTypeDef pEraseInit = {
           .TypeErase = FLASH_TYPEERASE_PAGES,
-          .Page = 7,
+          .Page = (&stuff >= 0x8007000) ? 15 : 7,
           .NbPages = 1,
         };
         uint32_t PageError;
@@ -194,6 +195,7 @@ int main(void)
           HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, i2c_buffer[2] == 0 ? GPIO_PIN_RESET: GPIO_PIN_SET);
           break;
         case NODE_BUZZER:
+        case NODE_VIBRO:
           uint32_t frequency;
           uint32_t duration;
           memcpy(&frequency, &i2c_buffer[0], sizeof(frequency));
@@ -267,6 +269,7 @@ void configurePins() {
       HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
       break;
     case NODE_BUZZER:
+    case NODE_VIBRO:
       MX_TIM1_PWM_Init();
       break;
     case NODE_ENCODER:
@@ -335,6 +338,7 @@ uint8_t prepareRx() {
     case NODE_BUTTONS:
       return 3;
     case NODE_BUZZER:
+    case NODE_VIBRO:
       return 8;
     case NODE_ENCODER:
     case NODE_ENCODER_2:
