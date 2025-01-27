@@ -293,6 +293,7 @@ void configurePins() {
       HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_SET);
       memset(i2c_buffer, 0xE0, NUM_LEDS * 4);
       show_leds(i2c_buffer);
+      break;
     case NODE_JOYSTICK:
       GPIO_InitStruct.Pin = GPIO_PIN_2;
       GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
