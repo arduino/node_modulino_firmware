@@ -35,6 +35,8 @@ ADC_HandleTypeDef hadc1;
 #define NODE_VIBRO      0x70
 #define NODE_SMARTLEDS  0x6C
 #define NODE_JOYSTICK   0x58
+#define NODE_OPTORELAY  0x28
+
 #define NUM_LEDS        8
 
 
@@ -221,6 +223,9 @@ int main(void)
           break;
         case NODE_JOYSTICK:
           break;
+        case NODE_OPTORELAY:
+          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, i2c_buffer[0] == 0 ? GPIO_PIN_RESET: GPIO_PIN_SET);
+          break;
       }
       dataReceived = false;
     }
@@ -302,6 +307,12 @@ void configurePins() {
       HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
       configureADC(&hadc1);
       break;
+    case NODE_OPTORELAY:
+      GPIO_InitStruct.Pin = GPIO_PIN_0;
+      GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+      GPIO_InitStruct.Pull = GPIO_NOPULL;
+      HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+      break;
     }
 }
 
@@ -330,12 +341,18 @@ uint8_t populateBuffer() {
       i2c_buffer[2] = adc_data[1];
       i2c_buffer[3] = !HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2);
       return 3;
+    case NODE_OPTORELAY:
+      i2c_buffer[1] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0);
+      i2c_buffer[2] = 0;
+      i2c_buffer[3] = 0;
+      return 3;
   }
   return 3;
 }
 
 uint8_t prepareRx() {
   switch (PINSTRAP_ADDRESS) {
+    case NODE_OPTORELAY:
     case NODE_BUTTONS:
       return 3;
     case NODE_BUZZER:
