@@ -172,6 +172,8 @@ int main(void)
           // unless the frequency is also 0 which is the case when calling the noTone function.
           if((duration > 0 && frequency > 0) || (duration == 0 && frequency == 0)) {
             endTone = HAL_GetTick() + duration;
+          } else {
+            endTone = 0;
           }
 
           // TODO: make the prescaler precise and configurable
