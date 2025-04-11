@@ -197,7 +197,6 @@ int main(void)
           HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, i2c_buffer[2] == 0 ? GPIO_PIN_RESET: GPIO_PIN_SET);
           break;
         case NODE_BUZZER:
-        case NODE_VIBRO:
           uint32_t frequency;
           uint32_t duration;
           memcpy(&frequency, &i2c_buffer[0], sizeof(frequency));
@@ -210,6 +209,23 @@ int main(void)
           TIM1->CCR1 = val / 2;
           //TIM_OC_InitTypeDef sConfig;
           //HAL_TIM_PWM_ConfigChannel(&htim1, &sConfig, TIM_CHANNEL_1);
+          HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+          break;
+        case NODE_VIBRO:
+          uint32_t frequency;
+          uint32_t duration;
+          uint32_t duty;
+          memcpy(&frequency, &i2c_buffer[0], sizeof(frequency));
+          memcpy(&duration, &i2c_buffer[4], sizeof(duration));
+          memcpy(&duty, &i2c_buffer[8], sizeof(duty));
+          endTone = HAL_GetTick() + duration;
+
+          // TODO: make the prescaler precise and configurable
+          uint32_t val = (0xFFFF * 180) / frequency;
+          TIM1->ARR = val;
+          float dutyf = (float)duty / 100.0f;
+          uint32_t dutyc = val * dutyf;
+          TIM1->CCR1 = dutyc;
           HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
           break;
         case NODE_ENCODER:
@@ -356,8 +372,9 @@ uint8_t prepareRx() {
     case NODE_BUTTONS:
       return 3;
     case NODE_BUZZER:
-    case NODE_VIBRO:
       return 8;
+    case NODE_VIBRO:
+      return 12;
     case NODE_ENCODER:
     case NODE_ENCODER_2:
       return 4;
