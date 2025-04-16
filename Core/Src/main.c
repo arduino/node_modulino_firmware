@@ -223,8 +223,7 @@ int main(void)
           // TODO: make the prescaler precise and configurable
           uint32_t val = (0xFFFF * 180) / frequency;
           TIM1->ARR = val;
-          float dutyf = (float)duty / 100.0f;
-          uint32_t dutyc = val * dutyf;
+          uint32_t dutyc = (val * duty) / 100;
           TIM1->CCR1 = dutyc;
           HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
           break;
