@@ -149,30 +149,6 @@ int main(void)
       endTone = 0;
     }
 
-    if (PINSTRAP_ADDRESS == NODE_JOYSTICK) {
-      ADC_ChannelConfTypeDef sConfig = {0};
-      sConfig.Channel = ADC_CHANNEL_0;
-      sConfig.Rank = ADC_REGULAR_RANK_1;
-      HAL_ADC_ConfigChannel(&hadc1, &sConfig);
-      sConfig.Channel = ADC_CHANNEL_1;
-      sConfig.Rank = ADC_RANK_NONE;
-      HAL_ADC_ConfigChannel(&hadc1, &sConfig);
-      HAL_ADC_Start(&hadc1);
-      HAL_ADC_PollForConversion(&hadc1, 10);
-      adc_data[0] = HAL_ADC_GetValue(&hadc1);
-      HAL_ADC_Stop(&hadc1);
-      sConfig.Channel = ADC_CHANNEL_0;
-      sConfig.Rank = ADC_RANK_NONE;
-      HAL_ADC_ConfigChannel(&hadc1, &sConfig);
-      sConfig.Channel = ADC_CHANNEL_1;
-      sConfig.Rank = ADC_REGULAR_RANK_1;
-      HAL_ADC_ConfigChannel(&hadc1, &sConfig);
-      HAL_ADC_Start(&hadc1);
-      HAL_ADC_PollForConversion(&hadc1, 10);
-      adc_data[1] = HAL_ADC_GetValue(&hadc1);
-      HAL_ADC_Stop(&hadc1);
-    }
-
     if (dataReceived) {
 
       if (i2c_buffer[0] == 'D' && i2c_buffer[1] == 'I' && i2c_buffer[2] == 'E') {
