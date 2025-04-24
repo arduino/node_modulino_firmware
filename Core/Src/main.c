@@ -26,6 +26,7 @@
 I2C_HandleTypeDef hi2c1;
 IWDG_HandleTypeDef hiwdg;
 TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim3;
 ADC_HandleTypeDef hadc1;
 
 #define NODE_BUTTONS    0x7C
@@ -36,6 +37,7 @@ ADC_HandleTypeDef hadc1;
 #define NODE_SMARTLEDS  0x6C
 #define NODE_JOYSTICK   0x58
 #define NODE_OPTORELAY  0x28
+#define NODE_LEDMATRIX  0x72
 
 #define NUM_LEDS        8
 
@@ -102,6 +104,10 @@ __attribute__((section(".userdata"))) uint8_t stuff[128];
 
 static volatile uint8_t adc_data[2];
 
+#ifdef FORCE_LEDMATRIX_MODULINO
+#include "matrix.c"
+#endif
+
 /**
   * @brief  The application entry point.
   * @retval int
@@ -143,6 +149,7 @@ int main(void)
       endTone = 0;
     }
 
+#if !defined(FORCE_LEDMATRIX_MODULINO)
     if (PINSTRAP_ADDRESS == NODE_JOYSTICK) {
       ADC_ChannelConfTypeDef sConfig = {0};
       sConfig.Channel = ADC_CHANNEL_0;
@@ -166,6 +173,7 @@ int main(void)
       adc_data[1] = HAL_ADC_GetValue(&hadc1);
       HAL_ADC_Stop(&hadc1);
     }
+#endif
 
     if (dataReceived) {
 
@@ -232,6 +240,13 @@ int main(void)
           break;
         case NODE_OPTORELAY:
           HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, i2c_buffer[0] == 0 ? GPIO_PIN_RESET: GPIO_PIN_SET);
+          break;
+        case NODE_LEDMATRIX:
+        #ifdef FORCE_LEDMATRIX_MODULINO
+          // write matrix data to the display
+          writeMatrix((uint32_t*)i2c_buffer);
+          //TIM3_IRQHandler();
+        #endif
           break;
       }
       dataReceived = false;
@@ -320,6 +335,25 @@ void configurePins() {
       GPIO_InitStruct.Pull = GPIO_NOPULL;
       HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
       break;
+    case NODE_LEDMATRIX:
+      GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1;
+      GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+      GPIO_InitStruct.Pull = GPIO_NOPULL;
+      GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+      HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+      __HAL_RCC_TIM3_CLK_ENABLE();
+      htim3.Instance = TIM3;
+      htim3.Init.Period = 100;
+      htim3.Init.Prescaler = 1;
+      htim3.Init.CounterMode = TIM_COUNTERMODE_DOWN;
+      htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+      HAL_TIM_Base_Init(&htim3);
+      HAL_TIM_Base_Start_IT(&htim3);
+      HAL_NVIC_SetPriority(TIM3_IRQn, 10, 0);
+      HAL_NVIC_EnableIRQ(TIM3_IRQn);
+      //__HAL_TIM_CLEAR_FLAG(&htim3, TIM_IT_UPDATE);
+      //__HAL_TIM_ENABLE_IT(&htim3, TIM_IT_UPDATE);
+      break;
     }
 }
 
@@ -370,6 +404,8 @@ uint8_t prepareRx() {
       return 4;
     case NODE_SMARTLEDS:
       return NUM_LEDS * 4;
+    case NODE_LEDMATRIX:
+      return 12;
   }
   return 3;
 }
@@ -607,6 +643,10 @@ static void MX_GPIO_Init(void)
 }
 
 static uint8_t readPinstraps() {
+
+#ifdef FORCE_LEDMATRIX_MODULINO
+  return NODE_LEDMATRIX;
+#endif
 
   // address = PA6 | PA7 | PA8 | PC14 | PC15 | PF2
   GPIO_InitTypeDef GPIO_InitStruct = {0};

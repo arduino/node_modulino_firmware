@@ -13,7 +13,7 @@
 ######################################
 # target
 ######################################
-TARGET = node_base
+TARGET := node_base
 
 
 ######################################
@@ -107,8 +107,8 @@ AS_DEFS =
 # C defines
 C_DEFS =  \
 -DUSE_HAL_DRIVER \
--DSTM32C011xx
-
+-DSTM32C011xx \
+$(EXTRA_CFLAGS) \
 
 # AS includes
 AS_INCLUDES = 
