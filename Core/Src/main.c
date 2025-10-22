@@ -37,6 +37,7 @@ ADC_HandleTypeDef hadc1;
 #define NODE_SMARTLEDS  0x6C
 #define NODE_JOYSTICK   0x58
 #define NODE_OPTORELAY  0x28
+#define NODE_LATCHRELAY 0x04
 #define NODE_LEDMATRIX  0x72
 
 #define NUM_LEDS        8
@@ -241,6 +242,15 @@ int main(void)
         case NODE_OPTORELAY:
           HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, i2c_buffer[0] == 0 ? GPIO_PIN_RESET: GPIO_PIN_SET);
           break;
+        case NODE_LATCHRELAY:
+          HAL_GPIO_WritePin(GPIOA, i2c_buffer[0] == 0 ? GPIO_PIN_1 : GPIO_PIN_0, GPIO_PIN_SET);
+          HAL_Delay(50);
+          HAL_GPIO_WritePin(GPIOA, i2c_buffer[0] == 0 ? GPIO_PIN_1 : GPIO_PIN_0, GPIO_PIN_RESET);
+          HAL_Delay(50);
+          HAL_GPIO_WritePin(GPIOA, i2c_buffer[0] == 0 ? GPIO_PIN_1 : GPIO_PIN_0, GPIO_PIN_SET);
+          HAL_GPIO_WritePin(GPIOA, i2c_buffer[0] == 0 ? GPIO_PIN_3 : GPIO_PIN_2, GPIO_PIN_RESET);
+          HAL_GPIO_WritePin(GPIOA, i2c_buffer[0] == 0 ? GPIO_PIN_2 : GPIO_PIN_3, GPIO_PIN_SET);
+          break;
         case NODE_LEDMATRIX:
         #ifdef FORCE_LEDMATRIX_MODULINO
           // write matrix data to the display
@@ -335,6 +345,12 @@ void configurePins() {
       GPIO_InitStruct.Pull = GPIO_NOPULL;
       HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
       break;
+    case NODE_LATCHRELAY:
+      GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3;
+      GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+      GPIO_InitStruct.Pull = GPIO_NOPULL;
+      HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+      break;
     case NODE_LEDMATRIX:
       GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1;
       GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -387,6 +403,12 @@ uint8_t populateBuffer() {
       i2c_buffer[2] = 0;
       i2c_buffer[3] = 0;
       return 3;
+    case NODE_LATCHRELAY:
+      i2c_buffer[1] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2);
+      i2c_buffer[2] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3);
+      i2c_buffer[3] = 0;
+      return 3;
+
   }
   return 3;
 }
@@ -394,6 +416,7 @@ uint8_t populateBuffer() {
 uint8_t prepareRx() {
   switch (PINSTRAP_ADDRESS) {
     case NODE_OPTORELAY:
+    case NODE_LATCHRELAY:
     case NODE_BUTTONS:
       return 3;
     case NODE_BUZZER:
