@@ -185,7 +185,7 @@ int main(void)
         uint8_t new_address = i2c_buffer[2];
         FLASH_EraseInitTypeDef pEraseInit = {
           .TypeErase = FLASH_TYPEERASE_PAGES,
-          .Page = (&stuff >= 0x8007000) ? 15 : 7,
+          .Page = (((uintptr_t)&stuff) >= 0x8007000) ? 15 : 7,
           .NbPages = 1,
         };
         uint32_t PageError;

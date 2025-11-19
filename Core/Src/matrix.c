@@ -112,6 +112,7 @@ int idxToPin(int idx) {
         case 9: return 11;
         case 10: return 12;
     }
+    return -1;
 }
 
 #define NUM_MATRIX_LEDS 96
