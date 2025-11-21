@@ -13,14 +13,25 @@
 ######################################
 # target
 ######################################
+
+# Take the target from environment variable, if defined, else use default
+ifdef TARGET
+TARGET := $(TARGET)
+else
 TARGET := node_base
+endif
 
 
 ######################################
 # building variables
 ######################################
+
 # debug build?
-DEBUG = 0
+ifdef DEBUG_MODE
+DEBUG = $(DEBUG_MODE)
+else
+DEBUG = 0 # debug mode off by default
+endif
 # optimization
 OPT = -Os
 
