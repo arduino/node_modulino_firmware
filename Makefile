@@ -32,9 +32,13 @@ DEBUG = $(DEBUG_MODE)
 else
 DEBUG = 0 # debug mode off by default
 endif
-# optimization
-OPT = -Os
 
+# optimization, -Og for debug, -Os for release
+ifeq ($(DEBUG), 1)
+OPT = -Og
+else
+OPT = -Os
+endif
 
 #######################################
 # paths
