@@ -13,23 +13,39 @@
 ######################################
 # target
 ######################################
+
+# Take the target from environment variable, if defined, else use default
+ifdef TARGET
+TARGET := $(TARGET)
+else
 TARGET := node_base
+endif
 
 
 ######################################
 # building variables
 ######################################
-# debug build?
-DEBUG = 0
-# optimization
-OPT = -Os
 
+# debug build?
+ifdef DEBUG_MODE
+DEBUG = $(DEBUG_MODE)
+else
+DEBUG = 0 # debug mode off by default
+endif
+
+# optimization, -Og for debug, -Os for release
+ifeq ($(DEBUG), 1)
+OPT = -Og
+else
+OPT = -Os
+endif
 
 #######################################
 # paths
 #######################################
 # Build path
 BUILD_DIR = build
+BIN_DIR = $(BUILD_DIR)/bin
 
 ######################################
 # source
@@ -145,10 +161,10 @@ LDSCRIPT = STM32C011F4Ux_FLASH.ld
 # libraries
 LIBS = -lc -lm -lnosys 
 LIBDIR = 
-LDFLAGS = $(MCU) -specs=nano.specs -T$(LDSCRIPT) $(LIBDIR) $(LIBS) -Wl,-Map=$(BUILD_DIR)/$(TARGET).map,--cref -Wl,--gc-sections
+LDFLAGS = $(MCU) -specs=nano.specs -T$(LDSCRIPT) $(LIBDIR) $(LIBS) -Wl,-Map=$(BIN_DIR)/$(TARGET).map,--cref -Wl,--gc-sections
 
 # default action: build all
-all: $(BUILD_DIR)/$(TARGET).elf $(BUILD_DIR)/$(TARGET).hex $(BUILD_DIR)/$(TARGET).bin
+all: $(BIN_DIR)/$(TARGET).elf $(BIN_DIR)/$(TARGET).hex $(BIN_DIR)/$(TARGET).bin
 
 
 #######################################
@@ -167,25 +183,35 @@ $(BUILD_DIR)/%.o: %.c Makefile | $(BUILD_DIR)
 $(BUILD_DIR)/%.o: %.s Makefile | $(BUILD_DIR)
 	$(AS) -c $(CFLAGS) $< -o $@
 
-$(BUILD_DIR)/$(TARGET).elf: $(OBJECTS) Makefile
+$(BIN_DIR)/$(TARGET).elf: $(OBJECTS) Makefile | $(BIN_DIR)
 	$(CC) $(OBJECTS) $(LDFLAGS) -o $@
 	$(SZ) $@
 
-$(BUILD_DIR)/%.hex: $(BUILD_DIR)/%.elf | $(BUILD_DIR)
+$(BIN_DIR)/%.hex: $(BIN_DIR)/%.elf | $(BIN_DIR)
 	$(HEX) $< $@
 	
-$(BUILD_DIR)/%.bin: $(BUILD_DIR)/%.elf | $(BUILD_DIR)
-	$(BIN) $< $@	
+$(BIN_DIR)/%.bin: $(BIN_DIR)/%.elf | $(BIN_DIR)
+	$(BIN) $< $@
 	
+
 $(BUILD_DIR):
-	mkdir $@		
+	mkdir -p $@
+
+$(BIN_DIR):
+	mkdir -p $@
 
 #######################################
 # clean up
 #######################################
+
+# Clean only build files
 clean:
+	-rm -f $(BUILD_DIR)/*.*
+
+# Clean all generated files including binary files
+cleanall:
 	-rm -fR $(BUILD_DIR)
-  
+
 #######################################
 # dependencies
 #######################################
