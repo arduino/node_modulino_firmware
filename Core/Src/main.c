@@ -428,6 +428,15 @@ uint8_t populateBuffer() {
   return 3;
 }
 
+/**
+ * Returns the expected length of data to be received over I2C
+ * from the host for the given Modulino type.
+ * Note that in order for the Modulino to process the received data,
+ * it must be of exactly this length. Hence the "DIE" command needs
+ * to be padded with dummy bytes to reach the expected length.
+ * 
+ * @return uint8_t Length of data to be received over I2C
+ */
 uint8_t prepareRx() {
   switch (PINSTRAP_ADDRESS) {
     case NODE_OPTORELAY:
