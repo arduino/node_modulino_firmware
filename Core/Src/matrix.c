@@ -119,11 +119,16 @@ int idxToPin(int idx) {
 static uint8_t __attribute__((aligned)) framebuffer[NUM_MATRIX_LEDS / 8];
 
 static void turnLed(int idx, bool on) {
-    GPIOA->MODER = 0;
+    GPIOA->MODER = 0; // Set all pins to hi-Z mode
 
     if (on) {
+        // Set correct output levels BEFORE changing to output mode.
+        // That way the levels are set while the pins are still in Input mode (Hi-Z), 
+        // so it doesn't manifest on the pins before they are switched to Output mode.
+        // When done in reverse order, the pins would drive whatever residual value
+        // left in the output data register, causing ghosting.
+        GPIOA->BSRR = (1 << (idxToPin(pins[idx][0])) | 1 << (idxToPin(pins[idx][1]) + 16));
         GPIOA->MODER |= (1 << (idxToPin(pins[idx][0]) * 2) | 1 << (idxToPin(pins[idx][1]) * 2));
-        GPIOA->BSRR |= (1 << (idxToPin(pins[idx][0])) | 1 << (idxToPin(pins[idx][1]) + 16));
     }
 }
 
