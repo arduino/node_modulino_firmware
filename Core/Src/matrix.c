@@ -127,23 +127,21 @@ static void turnLed(int idx, bool on) {
     }
 }
 
-static uint32_t reverse(uint32_t x)
-{
-    x = ((x >> 1) & 0x55555555u) | ((x & 0x55555555u) << 1);
-    x = ((x >> 2) & 0x33333333u) | ((x & 0x33333333u) << 2);
-    x = ((x >> 4) & 0x0f0f0f0fu) | ((x & 0x0f0f0f0fu) << 4);
-    x = ((x >> 8) & 0x00ff00ffu) | ((x & 0x00ff00ffu) << 8);
-    x = ((x >> 16) & 0xffffu) | ((x & 0xffffu) << 16);
-    return x;
-}
-
 void writeMatrix(uint32_t* buf) {
     memcpy(framebuffer, (uint32_t*)buf, NUM_MATRIX_LEDS/8);
 }
 
 void TIM3_IRQHandler() {
     static volatile int i_isr = 0;
-    turnLed(i_isr, ((framebuffer[i_isr >> 3] & (1 << (i_isr % 8))) != 0));
+
+    // Vertical layout mapping:
+    // The framebuffer is organized as 12 bytes, where each byte represents a column.
+    // i_isr corresponds to the LED index in row-major order (0-11 is row 0, 12-23 is row 1, etc).
+    
+    int row = i_isr / 12;
+    int col = i_isr % 12;
+
+    turnLed(i_isr, ((framebuffer[col] & (1 << row)) != 0));
     i_isr = (i_isr + 1) % NUM_MATRIX_LEDS;
     HAL_TIM_IRQHandler(&htim3);
 }
