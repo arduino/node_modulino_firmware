@@ -112,7 +112,7 @@ static inline void turnLed(int idx, bool on) {
         // Optimized pin lookup from static const table
         uint8_t p1 = pin_lut[pins[idx][0]];
         uint8_t p2 = pin_lut[pins[idx][1]];
-        
+
         // Set correct output levels BEFORE changing to output mode.
         // That way the levels are set while the pins are still in Input mode (Hi-Z), 
         // so it doesn't manifest on the pins before they are switched to Output mode.
@@ -123,8 +123,8 @@ static inline void turnLed(int idx, bool on) {
     }
 }
 
-void writeMatrix(uint32_t* buf) {
-    memcpy(framebuffer, (uint8_t*)buf, NUM_MATRIX_LEDS/2);
+void writeMatrix(uint8_t* buf) {
+    memcpy(framebuffer, buf, NUM_MATRIX_LEDS/2);
     matrix_started = true;
 }
 

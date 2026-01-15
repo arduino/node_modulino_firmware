@@ -267,7 +267,7 @@ int main(void)
         case NODE_LEDMATRIX:
         #ifdef FORCE_LEDMATRIX_MODULINO
           // write matrix data to the display
-          writeMatrix((uint32_t*)i2c_buffer);
+          writeMatrix(i2c_buffer);
           //TIM3_IRQHandler();
         #endif
           break;
