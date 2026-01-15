@@ -442,7 +442,7 @@ uint8_t prepareRx() {
     case NODE_SMARTLEDS:
       return NUM_LEDS * 4;
     case NODE_LEDMATRIX:
-      return 12;
+      return 48;
   }
   return 3;
 }

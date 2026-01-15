@@ -117,6 +117,7 @@ int idxToPin(int idx) {
 
 #define NUM_MATRIX_LEDS 96
 static uint8_t __attribute__((aligned)) framebuffer[NUM_MATRIX_LEDS];
+static volatile bool matrix_started = false;
 
 static void turnLed(int idx, bool on) {
     GPIOA->MODER = 0;
@@ -128,26 +129,33 @@ static void turnLed(int idx, bool on) {
 }
 
 void writeMatrix(uint32_t* buf) {
-    memcpy(framebuffer, (uint8_t*)buf, NUM_MATRIX_LEDS);
+    memcpy(framebuffer, (uint8_t*)buf, NUM_MATRIX_LEDS/2);
+    matrix_started = true;
 }
 
 void TIM3_IRQHandler() {
+    if (!matrix_started) {
+        HAL_TIM_IRQHandler(&htim3);
+        return;
+    }
+
     static volatile int i_isr = 0;
     static volatile uint8_t pwm_counter = 0;
 
-    // Horizontal layout mapping:
-    // The framebuffer is organized as 8 rows * 12 columns bytes, where each byte represents an LED's brightness.
-    // i_isr corresponds to the LED index in row-major order (0-11 is row 0, 12-23 is row 1, etc).
-    // So the mapping is direct.
+    // Horizontal layout mapping with 4-bit packed storage
+    // i_isr corresponds to the LED index in row-major order.
+    
+    int byte_idx = i_isr / 2;
+    int is_high_nibble = i_isr % 2;
+    uint8_t nibble = is_high_nibble ? (framebuffer[byte_idx] >> 4) : (framebuffer[byte_idx] & 0x0F);
     
     // Simple software PWM
-    uint8_t brightness = framebuffer[i_isr];
+    // Input is 4-bit (0-15). Logic uses 8 levels (0-7) to maintain refresh rate.
+    uint8_t brightness = nibble >> 1; // Map 0-15 -> 0-7
 
     // PWM logic: compare brightness against a rolling counter.
-    // To maintain a reasonable refresh rate with 96 LEDs, we reduce the color depth resolution.
-    // Incrementing pwm_counter by 32 gives 8 levels of brightness (256/32 = 8).
+    // pwm_counter cycles 0..7
     // Total steps per full update cycle = 96 LEDs * 8 levels = 768 interrupts.
-    // At e.g. 24kHz interrupt rate, that's ~31Hz refresh rate.
     
     bool on = (brightness > pwm_counter);
     turnLed(i_isr, on);
@@ -155,7 +163,7 @@ void TIM3_IRQHandler() {
     i_isr = (i_isr + 1);
     if (i_isr >= NUM_MATRIX_LEDS) {
         i_isr = 0;
-        pwm_counter = (pwm_counter + 32) % 256; 
+        pwm_counter = (pwm_counter + 1) % 8; 
     }
     
     HAL_TIM_IRQHandler(&htim3);
