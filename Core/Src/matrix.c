@@ -1,3 +1,4 @@
+// Table mapping LED indices to GPIOA pin pairs
 static const uint8_t pins[][2] = {
     { 7, 3 }, // 0
     { 3, 7 },
@@ -97,23 +98,8 @@ static const uint8_t pins[][2] = {
     { 9, 4 },
   };
 
-
-int idxToPin(int idx) {
-    switch (idx) {
-        case 0: return 0;
-        case 1: return 3;
-        case 2: return 1;
-        case 3: return 5;
-        case 4: return 8;
-        case 5: return 7;
-        case 6: return 2;
-        case 7: return 4;
-        case 8: return 6;
-        case 9: return 11;
-        case 10: return 12;
-    }
-    return -1;
-}
+// LUT to map logical pin numbers to actual GPIOA pin numbers
+static const uint8_t pin_lut[] = { 0, 3, 1, 5, 8, 7, 2, 4, 6, 11, 12 };
 
 #define NUM_MATRIX_LEDS 96
 static uint8_t __attribute__((aligned)) framebuffer[NUM_MATRIX_LEDS];
@@ -123,8 +109,11 @@ static void turnLed(int idx, bool on) {
     GPIOA->MODER = 0;
 
     if (on) {
-        GPIOA->MODER |= (1 << (idxToPin(pins[idx][0]) * 2) | 1 << (idxToPin(pins[idx][1]) * 2));
-        GPIOA->BSRR |= (1 << (idxToPin(pins[idx][0])) | 1 << (idxToPin(pins[idx][1]) + 16));
+        // Optimized pin lookup from static const table
+        uint8_t p1 = pin_lut[pins[idx][0]];
+        uint8_t p2 = pin_lut[pins[idx][1]];
+        GPIOA->MODER |= (1 << (p1 * 2) | 1 << (p2 * 2));
+        GPIOA->BSRR |= (1 << p1 | 1 << (p2 + 16));
     }
 }
 
@@ -134,8 +123,17 @@ void writeMatrix(uint32_t* buf) {
 }
 
 void TIM3_IRQHandler() {
+    // Clear Update Interrupt Flag at the start to avoid ghost interrupts 
+    // since clearing the flag might take several clock cycles to propagate.
+    // Direclty assigning the SR register instead of calling HAL_TIM_IRQHandler(&htim3) for efficiency.    
+    // We use direct assignment (=) rather than RMW (&=) to avoid 
+    // accidentally clearing other flags that might have triggered during the RMW operation. 
+    // Writing 0 clears the bit, writing 1 has no effect (rc_w0).
+    // We skip "if (TIM3->SR & UIF)" because TIM3 only triggers this one 
+    // interrupt type (Update) in our config. Checking costs unnecessary CPU cycles.
+    TIM3->SR = ~TIM_SR_UIF;
+
     if (!matrix_started) {
-        HAL_TIM_IRQHandler(&htim3);
         return;
     }
 
@@ -149,22 +147,18 @@ void TIM3_IRQHandler() {
     int is_high_nibble = i_isr % 2;
     uint8_t nibble = is_high_nibble ? (framebuffer[byte_idx] >> 4) : (framebuffer[byte_idx] & 0x0F);
     
-    // Simple software PWM
-    // Input is 4-bit (0-15). Logic uses 8 levels (0-7) to maintain refresh rate.
-    uint8_t brightness = nibble >> 1; // Map 0-15 -> 0-7
-
     // PWM logic: compare brightness against a rolling counter.
-    // pwm_counter cycles 0..7
-    // Total steps per full update cycle = 96 LEDs * 8 levels = 768 interrupts.
+    // pwm_counter cycles 0..15 (16 levels)
+    uint8_t brightness = nibble; 
     
     bool on = (brightness > pwm_counter);
     turnLed(i_isr, on);
     
-    i_isr = (i_isr + 1);
+    // Increment LED index
+    i_isr++;
     if (i_isr >= NUM_MATRIX_LEDS) {
         i_isr = 0;
-        pwm_counter = (pwm_counter + 1) % 8; 
+        // Increment PWM cycle (0-15)
+        pwm_counter = (pwm_counter + 1) & 0x0F; 
     }
-    
-    HAL_TIM_IRQHandler(&htim3);
 }

@@ -372,7 +372,7 @@ void configurePins() {
       HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
       __HAL_RCC_TIM3_CLK_ENABLE();
       htim3.Instance = TIM3;
-      htim3.Init.Period = 100;
+      htim3.Init.Period = 50;
       htim3.Init.Prescaler = 1;
       htim3.Init.CounterMode = TIM_COUNTERMODE_DOWN;
       htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
