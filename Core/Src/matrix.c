@@ -105,7 +105,7 @@ static const uint8_t pin_lut[] = { 0, 3, 1, 5, 8, 7, 2, 4, 6, 11, 12 };
 static uint8_t __attribute__((aligned)) framebuffer[NUM_MATRIX_LEDS];
 static volatile bool matrix_started = false;
 
-static void turnLed(int idx, bool on) {
+static inline void turnLed(int idx, bool on) {
     GPIOA->MODER = 0;
 
     if (on) {
@@ -144,8 +144,10 @@ void TIM3_IRQHandler() {
     // i_isr corresponds to the LED index in row-major order.
     
     int byte_idx = i_isr / 2;
-    int is_high_nibble = i_isr % 2;
-    uint8_t nibble = is_high_nibble ? (framebuffer[byte_idx] >> 4) : (framebuffer[byte_idx] & 0x0F);
+    // Host sends data as High Nibble (Even LED) then Low Nibble (Odd LED)
+    // E.g. 0xF0 means LED 0 = 15, LED 1 = 0.
+    bool is_even_led = (i_isr % 2 == 0);
+    uint8_t nibble = is_even_led ? (framebuffer[byte_idx] >> 4) : (framebuffer[byte_idx] & 0x0F);
     
     // PWM logic: compare brightness against a rolling counter.
     // pwm_counter cycles 0..15 (16 levels)
