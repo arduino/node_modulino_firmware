@@ -102,7 +102,7 @@ static const uint8_t pins[][2] = {
 static const uint8_t pin_lut[] = { 0, 3, 1, 5, 8, 7, 2, 4, 6, 11, 12 };
 
 #define NUM_MATRIX_LEDS 96
-static uint8_t __attribute__((aligned)) framebuffer[NUM_MATRIX_LEDS];
+static uint8_t __attribute__((aligned)) framebuffer[NUM_MATRIX_LEDS / 2];
 static volatile bool matrix_started = false;
 
 static inline void turnLed(int idx, bool on) {
