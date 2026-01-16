@@ -65,6 +65,7 @@ static uint8_t ADDRESS;
 static uint8_t PINSTRAP_ADDRESS;
 
 static int16_t encoder_last_reset_status = 0;
+bool ledMatrixGrayscaleMode = false;
 
 void JumpToBootloader (void)
 {
@@ -266,9 +267,19 @@ int main(void)
           break;
         case NODE_LEDMATRIX:
         #ifdef FORCE_LEDMATRIX_MODULINO
-          // write matrix data to the display
-          writeMatrix(i2c_buffer);
-          //TIM3_IRQHandler();
+          // If the first three bytes are "GS4", enable grayscale mode
+          if(i2c_buffer[0] == 'G' && i2c_buffer[1] == 'S' && i2c_buffer[2] == '4'){
+            ledMatrixGrayscaleMode = true;
+            __HAL_TIM_SET_AUTORELOAD(&htim3, 50);
+          // If the first three bytes are "MON", disable grayscale mode = monochrome mode
+          } else if(i2c_buffer[0] == 'M' && i2c_buffer[1] == 'O' && i2c_buffer[2] == 'N'){
+            ledMatrixGrayscaleMode = false;
+            __HAL_TIM_SET_AUTORELOAD(&htim3, 100);
+          } else {
+            // write matrix data to the display
+            writeMatrix(i2c_buffer);
+            //TIM3_IRQHandler();
+          }
         #endif
           break;
       }
@@ -372,7 +383,7 @@ void configurePins() {
       HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
       __HAL_RCC_TIM3_CLK_ENABLE();
       htim3.Instance = TIM3;
-      htim3.Init.Period = 50;
+      htim3.Init.Period = 100;
       htim3.Init.Prescaler = 1;
       htim3.Init.CounterMode = TIM_COUNTERMODE_DOWN;
       htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
@@ -421,7 +432,17 @@ uint8_t populateBuffer() {
       i2c_buffer[2] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3);
       i2c_buffer[3] = 0;
       return 3;
-
+    case NODE_LEDMATRIX:
+      if(ledMatrixGrayscaleMode){
+        i2c_buffer[1] = 'G';
+        i2c_buffer[2] = 'S';
+        i2c_buffer[3] = '4';
+      } else {
+        i2c_buffer[1] = 'M';
+        i2c_buffer[2] = 'O';
+        i2c_buffer[3] = 'N';
+      }
+      return 3;
   }
   return 3;
 }
@@ -442,7 +463,7 @@ uint8_t prepareRx() {
     case NODE_SMARTLEDS:
       return NUM_LEDS * 4;
     case NODE_LEDMATRIX:
-      return 48;
+      return ledMatrixGrayscaleMode ? 48 : 12;
   }
   return 3;
 }

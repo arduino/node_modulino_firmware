@@ -102,6 +102,9 @@ static const uint8_t pins[][2] = {
 static const uint8_t pin_lut[] = { 0, 3, 1, 5, 8, 7, 2, 4, 6, 11, 12 };
 
 #define NUM_MATRIX_LEDS 96
+// Declare external flag from main.c
+extern bool ledMatrixGrayscaleMode;
+
 static uint8_t __attribute__((aligned)) framebuffer[NUM_MATRIX_LEDS / 2];
 static volatile bool matrix_started = false;
 
@@ -124,7 +127,12 @@ static inline void turnLed(int idx, bool on) {
 }
 
 void writeMatrix(uint8_t* buf) {
-    memcpy(framebuffer, buf, NUM_MATRIX_LEDS/2);
+    if(ledMatrixGrayscaleMode){
+        memcpy(framebuffer, buf, NUM_MATRIX_LEDS/2);
+    } else {
+        // Monochrome mode, each bit represents one LED
+        memcpy(framebuffer, buf, NUM_MATRIX_LEDS/8);
+    }
     matrix_started = true;
 }
 
@@ -146,27 +154,60 @@ void TIM3_IRQHandler() {
     static volatile int i_isr = 0;
     static volatile uint8_t pwm_counter = 0;
 
-    // Horizontal layout mapping with 4-bit packed storage
-    // i_isr corresponds to the LED index in row-major order.
-    
-    int byte_idx = i_isr / 2;
-    // Host sends data as High Nibble (Even LED) then Low Nibble (Odd LED)
-    // E.g. 0xF0 means LED 0 = 15, LED 1 = 0.
-    bool is_even_led = (i_isr % 2 == 0);
-    uint8_t nibble = is_even_led ? (framebuffer[byte_idx] >> 4) : (framebuffer[byte_idx] & 0x0F);
-    
-    // PWM logic: compare brightness against a rolling counter.
-    // pwm_counter cycles 0..15 (16 levels)
-    uint8_t brightness = nibble; 
-    
-    bool on = (brightness > pwm_counter);
-    turnLed(i_isr, on);
-    
-    // Increment LED index
-    i_isr++;
-    if (i_isr >= NUM_MATRIX_LEDS) {
-        i_isr = 0;
-        // Increment PWM cycle (0-15)
-        pwm_counter = (pwm_counter + 1) & 0x0F; 
+    if(ledMatrixGrayscaleMode){
+        // Horizontal layout mapping with 4-bit packed storage
+        // i_isr corresponds to the LED index in row-major order.
+        
+        int byte_idx = i_isr / 2;
+        // Host sends data as High Nibble (Even LED) then Low Nibble (Odd LED)
+        // E.g. 0xF0 means LED 0 = 15, LED 1 = 0.
+        bool is_even_led = (i_isr % 2 == 0);
+        uint8_t nibble = is_even_led ? (framebuffer[byte_idx] >> 4) : (framebuffer[byte_idx] & 0x0F);
+        
+        // PWM logic: compare brightness against a rolling counter.
+        // pwm_counter cycles 0..15 (16 levels)
+        uint8_t brightness = nibble; 
+        
+        bool on = (brightness > pwm_counter);
+        turnLed(i_isr, on);
+        
+        // Increment LED index
+        i_isr++;
+        if (i_isr >= NUM_MATRIX_LEDS) {
+            i_isr = 0;
+            // Increment PWM cycle (0-15)
+            pwm_counter = (pwm_counter + 1) & 0x0F; 
+        }
+    } else {
+        // Vertical layout mapping:
+        // The framebuffer is organized as 12 bytes, where each byte represents a column.
+        // i_isr corresponds to the LED index in row-major order (0-11 is row 0, 12-23 is row 1, etc).
+        
+        // Optimization: Use stateful counters to avoid costly division/modulo by 12 in ISR
+        static uint8_t row = 0;
+        static uint8_t col = 0;
+
+        // Resync logic in case i_isr was reset externally or on mode switch (though i_isr is static)
+        // Since i_isr corresponds to row*12 + col, checking for 0 is safe synchronization.
+        if (i_isr == 0) {
+            row = 0;
+            col = 0;
+        }
+
+        turnLed(i_isr, ((framebuffer[col] & (1 << row)) != 0));
+
+        // Increment logic matching (i_isr / 12) / (i_isr % 12)
+        col++;
+        if (col >= 12) {
+            col = 0;
+            row++;
+            // No need to reset row here as i_isr reset handles it
+        }
+
+        i_isr++;
+        if (i_isr >= NUM_MATRIX_LEDS) {
+            i_isr = 0;
+            // row/col will be reset at start of next call
+        }
     }
 }
