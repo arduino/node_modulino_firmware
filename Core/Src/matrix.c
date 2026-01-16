@@ -108,7 +108,19 @@ extern bool ledMatrixGrayscaleMode;
 static uint8_t __attribute__((aligned)) framebuffer[NUM_MATRIX_LEDS / 2];
 
 static inline void turnLed(int idx, bool on) {
-    GPIOA->MODER = 0; // Set all pins to hi-Z mode
+    // Set all matrix pins to Input (Hi-Z) to prevent ghosting,
+    // while preserving special function pins (SWD, UART, etc.).
+    //
+    // Mask 0xFC3C0000 details:
+    // Bits 31-28 (0xF): Preserves PA15, PA14 (SWDCLK)
+    // Bits 27-24 (0xC): Preserves PA13 (SWDIO), clears PA12
+    // Bits 23-20 (0x3): Clears PA11, preserves PA10
+    // Bits 19-16 (0xC): Preserves PA9, clears PA8
+    // Bits 15-00 (0x0): Clears PA0-PA7
+    //
+    // Result: Clears PA12, PA11, PA8, PA0-PA7 (All Matrix Pins)
+    // Preserves PA15, PA14, PA13, PA10, PA9 
+    GPIOA->MODER &= 0xFC3C0000; 
 
     if (on) {
         // Optimized pin lookup from static const table
