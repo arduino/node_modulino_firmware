@@ -106,7 +106,6 @@ static const uint8_t pin_lut[] = { 0, 3, 1, 5, 8, 7, 2, 4, 6, 11, 12 };
 extern bool ledMatrixGrayscaleMode;
 
 static uint8_t __attribute__((aligned)) framebuffer[NUM_MATRIX_LEDS / 2];
-static volatile bool matrix_started = false;
 
 static inline void turnLed(int idx, bool on) {
     GPIOA->MODER = 0; // Set all pins to hi-Z mode
@@ -133,7 +132,6 @@ void writeMatrix(uint8_t* buf) {
         // Monochrome mode, each bit represents one LED
         memcpy(framebuffer, buf, NUM_MATRIX_LEDS/8);
     }
-    matrix_started = true;
 }
 
 void TIM3_IRQHandler() {
@@ -146,10 +144,6 @@ void TIM3_IRQHandler() {
     // We skip "if (TIM3->SR & UIF)" because TIM3 only triggers this one 
     // interrupt type (Update) in our config. Checking costs unnecessary CPU cycles.
     TIM3->SR = ~TIM_SR_UIF;
-
-    if (!matrix_started) {
-        return;
-    }
 
     static volatile int i_isr = 0;
     static volatile uint8_t pwm_counter = 0;
