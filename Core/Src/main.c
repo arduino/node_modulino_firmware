@@ -277,11 +277,13 @@ int main(void)
           // If the first three bytes are "GS4", enable grayscale mode
           if(i2c_buffer[0] == 'G' && i2c_buffer[1] == 'S' && i2c_buffer[2] == '4'){
             ledMatrixGrayscaleMode = true;
-            __HAL_TIM_SET_AUTORELOAD(&htim3, 50);
+            // Grayscale needs faster refresh (100) for PWM/dimming to avoid flicker.
+            __HAL_TIM_SET_AUTORELOAD(&htim3, 100);   // Adjusted for 24MHz
           // If the first three bytes are "MON", disable grayscale mode = monochrome mode
           } else if(i2c_buffer[0] == 'M' && i2c_buffer[1] == 'O' && i2c_buffer[2] == 'N'){
             ledMatrixGrayscaleMode = false;
-            __HAL_TIM_SET_AUTORELOAD(&htim3, 100);
+            // Monochrome uses slower refresh (200) to reduce interrupt load and save CPU.
+            __HAL_TIM_SET_AUTORELOAD(&htim3, 200);   // Adjusted for 24MHz
           } else {
             // write matrix data to the display
             writeMatrix(i2c_buffer);
@@ -390,7 +392,7 @@ void configurePins() {
       HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
       __HAL_RCC_TIM3_CLK_ENABLE();
       htim3.Instance = TIM3;
-      htim3.Init.Period = 100;
+      htim3.Init.Period = 200; // Adjusted for 24MHz
       htim3.Init.Prescaler = 1;
       htim3.Init.CounterMode = TIM_COUNTERMODE_DOWN;
       htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
