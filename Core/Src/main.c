@@ -561,7 +561,7 @@ static void MX_NVIC_Init(void)
 static void MX_I2C1_Init(uint8_t address)
 {
   hi2c1.Instance = I2C1;
-  hi2c1.Init.Timing = 0x00100413;
+  hi2c1.Init.Timing = 0x10100413; // Adjusted for 24MHz: Prescaler=1 (div by 2) to keep 12MHz timing inputs
   hi2c1.Init.OwnAddress1 = address;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
