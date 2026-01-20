@@ -120,6 +120,13 @@ int main(void)
   HAL_Init();
   /* Configure the system clock */
   SystemClock_Config();
+
+#ifdef DEBUG
+  // Pure safety delay: 2 seconds before enabling any GPIOs.
+  // This ensures SWD access even if GPIO initialization crashes the system.
+  HAL_Delay(2000);
+#endif
+
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   PINSTRAP_ADDRESS = readPinstraps();
