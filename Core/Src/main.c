@@ -65,6 +65,7 @@ static uint8_t ADDRESS;
 static uint8_t PINSTRAP_ADDRESS;
 
 static int16_t encoder_last_reset_status = 0;
+bool ledMatrixGrayscaleMode = false;
 
 void JumpToBootloader (void)
 {
@@ -266,9 +267,19 @@ int main(void)
           break;
         case NODE_LEDMATRIX:
         #ifdef FORCE_LEDMATRIX_MODULINO
-          // write matrix data to the display
-          writeMatrix((uint32_t*)i2c_buffer);
-          //TIM3_IRQHandler();
+          // If the first three bytes are "GS4", enable grayscale mode
+          if(i2c_buffer[0] == 'G' && i2c_buffer[1] == 'S' && i2c_buffer[2] == '4'){
+            ledMatrixGrayscaleMode = true;
+            __HAL_TIM_SET_AUTORELOAD(&htim3, 50);
+          // If the first three bytes are "MON", disable grayscale mode = monochrome mode
+          } else if(i2c_buffer[0] == 'M' && i2c_buffer[1] == 'O' && i2c_buffer[2] == 'N'){
+            ledMatrixGrayscaleMode = false;
+            __HAL_TIM_SET_AUTORELOAD(&htim3, 100);
+          } else {
+            // write matrix data to the display
+            writeMatrix(i2c_buffer);
+            //TIM3_IRQHandler();
+          }
         #endif
           break;
       }
@@ -365,8 +376,10 @@ void configurePins() {
       HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
       break;
     case NODE_LEDMATRIX:
-      GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1;
+      GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_11 | GPIO_PIN_12;
       GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+      // No pulldown because inactive charlieplexed LEDs
+      // need to be Hi-Z state so no leakage current flows.
       GPIO_InitStruct.Pull = GPIO_NOPULL;
       GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
       HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
@@ -421,11 +434,30 @@ uint8_t populateBuffer() {
       i2c_buffer[2] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3);
       i2c_buffer[3] = 0;
       return 3;
-
+    case NODE_LEDMATRIX:
+      if(ledMatrixGrayscaleMode){
+        i2c_buffer[1] = 'G';
+        i2c_buffer[2] = 'S';
+        i2c_buffer[3] = '4';
+      } else {
+        i2c_buffer[1] = 'M';
+        i2c_buffer[2] = 'O';
+        i2c_buffer[3] = 'N';
+      }
+      return 3;
   }
   return 3;
 }
 
+/**
+ * Returns the expected length of data to be received over I2C
+ * from the host for the given Modulino type.
+ * Note that in order for the Modulino to process the received data,
+ * it must be of exactly this length. Hence the "DIE" command needs
+ * to be padded with dummy bytes to reach the expected length.
+ * 
+ * @return uint8_t Length of data to be received over I2C
+ */
 uint8_t prepareRx() {
   switch (PINSTRAP_ADDRESS) {
     case NODE_OPTORELAY:
@@ -442,7 +474,7 @@ uint8_t prepareRx() {
     case NODE_SMARTLEDS:
       return NUM_LEDS * 4;
     case NODE_LEDMATRIX:
-      return 12;
+      return ledMatrixGrayscaleMode ? 48 : 12;
   }
   return 3;
 }
