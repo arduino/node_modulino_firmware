@@ -140,9 +140,12 @@ static const LedMatrixLutEntry led_lut[96] = {
 // Declare external flag from main.c
 extern bool ledMatrixGrayscaleMode;
 
+// A maximum of 48 bytes needed for 4-bit grayscale mode (96 LEDs * 4 bits = 384 bits = 48 bytes)
 static uint8_t __attribute__((aligned)) framebuffer[NUM_MATRIX_LEDS / 2];
 
-static inline void turnLed(int idx, bool on) {
+// Using static inline function with always_inline attribute
+// to ensure the function is inlined for performance in ISR even with -Os optimization.
+static inline void __attribute__((always_inline)) turnLed(uint8_t idx, bool on) {
     // Set all matrix pins to Input (Hi-Z) to prevent ghosting,
     // while preserving special function pins (SWD, UART, etc.).
     //
@@ -188,62 +191,72 @@ void TIM3_IRQHandler() {
     // interrupt type (Update) in our config. Checking costs unnecessary CPU cycles.
     TIM3->SR = ~TIM_SR_UIF;
 
-    static volatile int i_isr = 0;
-    static volatile uint8_t pwm_counter = 0;
+    // Optimization: Skipped read-back of SR register ((void)TIM3->SR).
+    // The ISR is sufficiently long (>70 cycles) and clocks are 1:1 synchronous,
+    // guaranteeing the write buffer flushes before the ISR exits.
+    // If it were shorter, ISR might be fast enough to exit before the generic write buffer 
+    // commits the write to the peripheral, causing the NVIC to re-fire the interrupt
+
+    // Since these variables are static and local to the ISR, and not modified 
+    // by any other code or hardware, they do not need to be volatile.
+    // Optimization: Group variables in a struct to allow base-relative addressing
+    // saving register re-loads.
+    static struct {
+        uint8_t i_isr;
+        uint8_t pwm_counter;
+        uint8_t row; 
+        uint8_t col; 
+    } state = {0, 0, 0, 0};
 
     if(ledMatrixGrayscaleMode){
         // Horizontal layout mapping with 4-bit packed storage
         // i_isr corresponds to the LED index in row-major order.
         
-        int byte_idx = i_isr / 2;
+        uint8_t byte_idx = state.i_isr / 2;
         // Host sends data as High Nibble (Even LED) then Low Nibble (Odd LED)
         // E.g. 0xF0 means LED 0 = 15, LED 1 = 0.
-        bool is_even_led = (i_isr % 2 == 0);
+        bool is_even_led = (state.i_isr % 2 == 0);
         uint8_t nibble = is_even_led ? (framebuffer[byte_idx] >> 4) : (framebuffer[byte_idx] & 0x0F);
         
         // PWM logic: compare brightness against a rolling counter.
         // pwm_counter cycles 0..15 (16 levels)
         uint8_t brightness = nibble; 
         
-        bool on = (brightness > pwm_counter);
-        turnLed(i_isr, on);
+        bool on = (brightness > state.pwm_counter);
+        turnLed(state.i_isr, on);
         
         // Increment LED index
-        i_isr++;
-        if (i_isr >= NUM_MATRIX_LEDS) {
-            i_isr = 0;
+        state.i_isr++;
+        if (state.i_isr >= NUM_MATRIX_LEDS) {
+            state.i_isr = 0;
             // Increment PWM cycle (0-15)
-            pwm_counter = (pwm_counter + 1) & 0x0F; 
+            state.pwm_counter = (state.pwm_counter + 1) & 0x0F; 
         }
     } else {
         // Vertical layout mapping:
         // The framebuffer is organized as 12 bytes, where each byte represents a column.
         // i_isr corresponds to the LED index in row-major order (0-11 is row 0, 12-23 is row 1, etc).
         
-        // Optimization: Use stateful counters to avoid costly division/modulo by 12 in ISR
-        static uint8_t row = 0;
-        static uint8_t col = 0;
-
         // Resync logic in case i_isr was reset externally or on mode switch (though i_isr is static)
         // Since i_isr corresponds to row*12 + col, checking for 0 is safe synchronization.
-        if (i_isr == 0) {
-            row = 0;
-            col = 0;
+        if (state.i_isr == 0) {
+            state.row = 0;
+            state.col = 0;
         }
 
-        turnLed(i_isr, ((framebuffer[col] & (1 << row)) != 0));
+        turnLed(state.i_isr, ((framebuffer[state.col] & (1 << state.row)) != 0));
 
         // Increment logic matching (i_isr / 12) / (i_isr % 12)
-        col++;
-        if (col >= 12) {
-            col = 0;
-            row++;
+        state.col++;
+        if (state.col >= 12) {
+            state.col = 0;
+            state.row++;
             // No need to reset row here as i_isr reset handles it
         }
 
-        i_isr++;
-        if (i_isr >= NUM_MATRIX_LEDS) {
-            i_isr = 0;
+        state.i_isr++;
+        if (state.i_isr >= NUM_MATRIX_LEDS) {
+            state.i_isr = 0;
             // row/col will be reset at start of next call
         }
     }
