@@ -68,6 +68,7 @@ static uint8_t PINSTRAP_ADDRESS;
 
 static int16_t encoder_last_reset_status = 0;
 bool ledMatrixGrayscaleMode = false;
+static uint32_t endTone = 0;
 
 void JumpToBootloader (void)
 {
@@ -145,8 +146,6 @@ int main(void)
   configurePins();
 
   HAL_I2C_EnableListen_IT(&hi2c1);
-
-  uint32_t endTone = 0;
 
   /* Infinite loop */
   while (1)
