@@ -554,6 +554,9 @@ void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c) {
 }
 
 void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c) {
+  // In case of error, re-enable listening mode 
+  // to be able to receive the next command
+  HAL_I2C_EnableListen_IT(&hi2c1);
 }
 
 /**

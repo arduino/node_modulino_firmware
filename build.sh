@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e # Exit immediately if a command exits with a non-zero status
 
 # Make sure sketches/libraries/Modulino/src/ folder exists
 
