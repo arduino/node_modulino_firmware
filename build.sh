@@ -26,4 +26,9 @@ CPU=-mcpu=cortex-m0 DEBUG_MODE=$DEBUG TARGET=matrix_node_base EXTRA_CFLAGS=-DFOR
 echo const > sketches/libraries/Modulino/src/fw_ledmatrix.h
 xxd -i -n matrix_node_base.bin build/bin/matrix_node_base.bin >> sketches/libraries/Modulino/src/fw_ledmatrix.h
 
-echo "Now you can create a commit in Modulino library"
+make clean
+CPU=-mcpu=cortex-m0 DEBUG_MODE=$DEBUG TARGET=motors_node_base EXTRA_CFLAGS=-DMODULINO_MOTORS_BUILD make
+echo const > sketches/libraries/Modulino/src/fw_motors.h
+xxd -i -n motors_node_base.bin build/bin/motors_node_base.bin >> sketches/libraries/Modulino/src/fw_motors.h
+
+echo "✅ Build successful. Now you can create a commit in Modulino library"

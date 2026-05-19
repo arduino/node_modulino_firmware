@@ -39,6 +39,7 @@ ADC_HandleTypeDef hadc1;
 #define NODE_OPTORELAY  0x28
 #define NODE_LATCHRELAY 0x04
 #define NODE_LEDMATRIX  0x72
+#define NODE_MOTOR      0x48
 
 #define NUM_LEDS        8
 
@@ -110,6 +111,10 @@ static volatile uint8_t adc_data[2];
 #include "matrix.c"
 #endif
 
+#ifdef MODULINO_MOTORS_BUILD
+#include "motors.h"
+#endif
+
 /**
   * @brief  The application entry point.
   * @retval int
@@ -174,6 +179,12 @@ int main(void)
       HAL_ADC_PollForConversion(&hadc1, 10);
       adc_data[1] = HAL_ADC_GetValue(&hadc1);
       HAL_ADC_Stop(&hadc1);
+    }
+
+    if (PINSTRAP_ADDRESS == NODE_MOTOR) {
+      #ifdef MODULINO_MOTORS_BUILD
+      Motor_Update();
+      #endif
     }
 #endif
 
@@ -282,6 +293,10 @@ int main(void)
           }
         #endif
           break;
+        case NODE_MOTOR:
+          #ifdef MODULINO_MOTORS_BUILD
+          Motor_HandleCommand(i2c_buffer);
+          #endif
       }
       dataReceived = false;
     }
@@ -396,6 +411,12 @@ void configurePins() {
       //__HAL_TIM_CLEAR_FLAG(&htim3, TIM_IT_UPDATE);
       //__HAL_TIM_ENABLE_IT(&htim3, TIM_IT_UPDATE);
       break;
+
+    case NODE_MOTOR:
+#ifdef MODULINO_MOTORS_BUILD
+      Motor_Init();
+#endif
+      break;
     }
 }
 
@@ -445,6 +466,16 @@ uint8_t populateBuffer() {
         i2c_buffer[3] = 'N';
       }
       return 3;
+    case NODE_MOTOR:
+      #ifdef MODULINO_MOTORS_BUILD
+      {
+        Motor_PopulateTelemetry(&i2c_buffer[1]);
+         return 6;
+      }
+      #else
+      memset(&i2c_buffer[1], 0, 5);
+      return 6;
+      #endif
   }
   return 3;
 }
@@ -475,6 +506,8 @@ uint8_t prepareRx() {
       return NUM_LEDS * 4;
     case NODE_LEDMATRIX:
       return ledMatrixGrayscaleMode ? 48 : 12;
+    case NODE_MOTOR:
+      return 8; // Largest motor command is 8 bytes
   }
   return 3;
 }
