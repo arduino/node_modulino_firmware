@@ -36,6 +36,13 @@ static bool motor_hfs_enabled = false;
 static int16_t motor_speed_cmd_a = 0;
 static int16_t motor_speed_cmd_b = 0;
 
+/**
+ * @brief  Reads the current sense value from a specific ADC channel.
+ * @param  channel The ADC channel to read.
+ * @retval 12-bit ADC reading, averaged over several samples.
+ * @note   Used in: Motor_Update() to sample ADC values for A and B motor currents independently, 
+ *         which is necessary to maintain an adaptive baseline and calculate the effective motor current.
+ */
 static uint16_t ReadCurrentSenseChannel(uint32_t channel) {
     ADC_ChannelConfTypeDef sConfig = {0};
     uint32_t accumulated = 0;
@@ -100,33 +107,68 @@ static uint16_t ReadCurrentSenseChannel(uint32_t channel) {
 #define PORT_BRIDGE GPIOA
 #define STEPPER_SETTLE_TICKS 20U // 2.0ms at 0.1ms/tick
 
+/**
+ * @brief  Converts a release delay in milliseconds to TIM3 timer ticks.
+ * @param  delay_ms The delay in milliseconds.
+ * @retval Converted duration in TIM3 ticks.
+ * @note   Used in: Motor_CommandStepper() to convert the user's release delay parameter 
+ *         into hardware timer ticks for the one-shot release scheduler.
+ */
 static uint16_t Stepper_ReleaseDelayMsToTicks(uint8_t delay_ms) {
     // TIM3 tick is 0.1ms, so 1ms = 10 ticks.
     return (uint16_t)delay_ms * 10U;
 }
 
+/**
+ * @brief  Enters a critical section, disabling interrupts.
+ * @retval Original primask state to be used with Motor_ExitCritical.
+ * @note   Used in: Motor_CommandStepper() to prevent stepper timer IRQs (TIM3) from 
+ *         firing while modifying shared multithreading variables like stepper direction/speed.
+ */
 static uint32_t Motor_EnterCritical(void) {
     uint32_t primask = __get_PRIMASK();
     __disable_irq();
     return primask;
 }
 
+/**
+ * @brief  Exits a critical section, restoring interrupt state.
+ * @param  primask The primask state previously returned by Motor_EnterCritical.
+ * @note   Used in: Motor_CommandStepper() to safely restore default system interrupt 
+ *         capabilities after modifying stepper state variables.
+ */
 static void Motor_ExitCritical(uint32_t primask) {
     __set_PRIMASK(primask);
 }
 
+/**
+ * @brief  Disables the stepper motor driver outputs to remove holding torque.
+ * @note   Used in: TIM3_IRQHandler() to disable outputs dynamically when the delayed 
+ *         release timer successfully expires.
+ */
 static void Stepper_ReleaseOutputs(void) {
     HAL_GPIO_WritePin(PORT_BRIDGE, PIN_DIN1A | PIN_DIN2A | PIN_DIN1B | PIN_DIN2B, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(GPIOA, PIN_ENA, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(GPIOA, PIN_ENB, GPIO_PIN_RESET);
 }
 
+/**
+ * @brief  Enables the stepper motor driver outputs.
+ * @note   Used in: Motor_SetMode() and Motor_CommandStepper() to awaken the H-bridges 
+ *         so they can begin driving coils aggressively for movement or holding torque.
+ */
 static void Stepper_EnableOutputs(void) {
     HAL_GPIO_WritePin(GPIOA, PIN_ENA, GPIO_PIN_SET);
     HAL_GPIO_WritePin(GPIOA, PIN_ENB, GPIO_PIN_SET);
 }
 
 // Helper: Configure GPIO pins
+/**
+ * @brief  Configures a GPIO pin as a standard push-pull output.
+ * @param  pin The GPIO_PIN_x to be configured on PORTA.
+ * @note   Used in: Motor_SetMode() to assign H-bridge pins to manual GPIO outputs 
+ *         when switching from DC mode (PWM) to Stepper mode (bit-banged).
+ */
 static void ConfigPin_Output(uint32_t pin) {
     GPIO_InitTypeDef GPIO_InitStruct = {0};
     GPIO_InitStruct.Pin = pin;
@@ -136,6 +178,13 @@ static void ConfigPin_Output(uint32_t pin) {
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 }
 
+/**
+ * @brief  Configures a GPIO pin for alternate function PWM output.
+ * @param  pin The GPIO_PIN_x to configure on PORTA.
+ * @param  alternate The alternate function macro (e.g., GPIO_AF5_TIM1).
+ * @note   Used in: Motor_SetMode() to map hardware timer (TIM1) signals to the pins 
+ *         for smooth hardware-level DC motor control instead of Stepper outputs.
+ */
 static void ConfigPin_PWM(uint32_t pin, uint32_t alternate) {
     GPIO_InitTypeDef GPIO_InitStruct = {0};
     GPIO_InitStruct.Pin = pin;
@@ -155,6 +204,12 @@ static void ConfigPin_PWM(uint32_t pin, uint32_t alternate) {
 // 5: A-, B- (Full Step 3)
 // 6: A0, B-
 // 7: A+, B- (Full Step 4)
+/**
+ * @brief  Applies the chosen phase logically defining H-bridge coil states.
+ * @param  phase The 0-7 phase configuration reflecting the internal stepping state machine.
+ * @note   Used in: Motor_CommandStepper() and TIM3_IRQHandler() to actually transition 
+ *         the physical motor hardware accurately following the stepper rotation sequences.
+ */
 static void Stepper_ApplyPhase(uint8_t phase) {
     // Phase mapping to Pins
     // A+ = DIN1A:H, DIN2A:L
@@ -192,6 +247,11 @@ static void Stepper_ApplyPhase(uint8_t phase) {
     }
 }
 
+/**
+ * @brief  Initializes peripheral clocks, GPIOs, ADC currents, and hardware timers.
+ * @note   Used in: Application boot (main logic/system init) to ready everything 
+ *         required strictly for motor control before handling commands.
+ */
 void Motor_Init(void) {
     // 1. Enable Clocks
     __HAL_RCC_GPIOA_CLK_ENABLE();
@@ -310,6 +370,12 @@ void Motor_Init(void) {
     Motor_SetMode(MOTOR_MODE_DC);
 }
 
+/**
+ * @brief  Sets the overall operating mode (DC driving or Stepper mode).
+ * @param  mode The active MotorMode selection.
+ * @note   Used in: Motor_Init() and Motor_HandleCommand() to dynamically re-allocate 
+ *         the driver pins between PWM generation and direct GPIO phase toggling based on needs.
+ */
 void Motor_SetMode(MotorMode mode) {
     // Disable outputs during switch
     HAL_GPIO_WritePin(GPIOA, PIN_ENA, GPIO_PIN_RESET);
@@ -365,6 +431,13 @@ void Motor_SetMode(MotorMode mode) {
     }
 }
 
+/**
+ * @brief  Sets relative DC speed mapping to hardware PWM ratio.
+ * @param  motor Target motor (MOTOR_A or MOTOR_B).
+ * @param  speed Input relative speed scalar (-32767 to 32767).
+ * @note   Used in: Motor_HandleCommand() to parse host requests for DC rotation 
+ *         and smoothly adjust active hardware timers on demand.
+ */
 void Motor_SetDCSpeed(uint8_t motor, int16_t speed) {
     if (currentMode != MOTOR_MODE_DC) return;
 
@@ -408,6 +481,12 @@ void Motor_SetDCSpeed(uint8_t motor, int16_t speed) {
     HAL_GPIO_WritePin(GPIOA, en_pin, (speed == 0) ? GPIO_PIN_RESET : GPIO_PIN_SET);
 }
 
+/**
+ * @brief  Adjusts the base operational driving frequency (PWM carrier).
+ * @param  frequency Desired frequency in Hz (200 - 60k).
+ * @note   Used in: Motor_HandleCommand() so users can dynamically shift motor PWM tone 
+ *         for varying load characteristics or acoustic requirements.
+ */
 void Motor_SetDCFrequency(uint16_t frequency) {
     if (currentMode != MOTOR_MODE_DC) return;
     
@@ -422,6 +501,14 @@ void Motor_SetDCFrequency(uint16_t frequency) {
 }
 
 
+/**
+ * @brief  Commands the stepper system to step a specified layout.
+ * @param  steps Amount to turn; negative represents backwards.
+ * @param  speed Time scalar affecting phase activation gaps.
+ * @param  releaseDelayMs Delay after completing sequences before killing bridge outputs.
+ * @note   Used in: Motor_HandleCommand() to translate a host request for stepped 
+ *         movement into physical hardware timer parameters effectively queuing motion.
+ */
 void Motor_CommandStepper(int32_t steps, uint16_t speed, uint8_t releaseDelayMs) {
     if (currentMode != MOTOR_MODE_STEPPER) return;
 
@@ -517,6 +604,12 @@ void Motor_CommandStepper(int32_t steps, uint16_t speed, uint8_t releaseDelayMs)
     Motor_ExitCritical(primask);
 }
 
+/**
+ * @brief  Receives raw I2C command arrays mapping directly out to motor functionality.
+ * @param  buffer Byte data indicating command category and arguments.
+ * @note   Used in: Primary external comms parser to easily funnel host-level routines 
+ *         into direct action upon driver variables.
+ */
 void Motor_HandleCommand(const uint8_t *buffer) {
     if (buffer == NULL) {
         return;
@@ -563,32 +656,73 @@ void Motor_HandleCommand(const uint8_t *buffer) {
     }
 }
 
+/**
+ * @brief  Sets step logic type (Half vs Full).
+ * @param  halfStep True uses half steps.
+ * @note   Used in: Motor_HandleCommand() to allow shifting between step resolution 
+ *         vs driver torque behavior dynamically.
+ */
 void Motor_SetStepMode(bool halfStep) {
     stepper_half_step = halfStep;
 }
 
+/**
+ * @brief  Overrides the active chip decay mechanisms via discrete lines.
+ * @param  decayMode Fast vs slow/mixed mapped directly to driver configuration pins.
+ * @note   Used in: Motor_HandleCommand() to address acoustic or ripple needs dynamically 
+ *         from user input.
+ */
 void Motor_SetDecay(uint8_t decayMode) {
     motor_decay_mode = decayMode & 0x03;
     HAL_GPIO_WritePin(GPIOA, PIN_DECAY1, (motor_decay_mode & 0x01) ? GPIO_PIN_SET : GPIO_PIN_RESET);
     HAL_GPIO_WritePin(GPIOA, PIN_DECAY2, (motor_decay_mode & 0x02) ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
+/**
+ * @brief  Checks if active scheduled stepping motions exist.
+ * @retval Return true if stepper remains busy moving.
+ * @note   Used in: Motor_GetStatusFlags() for pushing real-time status details 
+ *         so host controllers can poll to avoid over-commanding.
+ */
 bool Motor_IsBusy(void) {
     return motor_busy;
 }
 
+/**
+ * @brief  Checks current internal mode representation.
+ * @retval MotorMode value defining DC or Stepper activity logic.
+ * @note   Used in: Motor_GetStatusFlags() returning the hardware intent representation 
+ *         to standard interrogation telemetry packets.
+ */
 MotorMode Motor_GetMode(void) {
     return currentMode;
 }
 
+/**
+ * @brief  Reports standard or half stepping flag configuration.
+ * @retval Stepping boolean.
+ * @note   Used in: Motor_GetStatusFlags() mapping logic rules out towards 
+ *         live user diagnostic checks.
+ */
 bool Motor_GetStepMode(void) {
     return stepper_half_step;
 }
 
+/**
+ * @brief  Reports current decay setting limit bits.
+ * @retval Saved decay mode numeric selection.
+ * @note   Used in: Motor_GetStatusFlags() passing localized configuration 
+ *         out toward the reporting framework.
+ */
 uint8_t Motor_GetDecay(void) {
     return motor_decay_mode;
 }
 
+/**
+ * @brief  Processes baseline stabilization and continuous sampling.
+ * @note   Used in: Central application main loop routines iteratively processing 
+ *         all module telemetry updates on ~100Hz pacing to maintain stability.
+ */
 void Motor_Update(void) {
     uint32_t now = HAL_GetTick();
     if (now - last_current_read_time > 10) { // Read every 10ms (100Hz)
@@ -616,23 +750,53 @@ void Motor_Update(void) {
     }
 }
 
+/**
+ * @brief  Fetches internally logged real current minus calibration baselines.
+ * @param  motor Denotes channel (MOTOR_A or MOTOR_B).
+ * @retval Processed unit value for sensed motor activity limits.
+ * @note   Used in: Motor_PopulateTelemetry() formatting actual reading outputs 
+ *         into the telemetry stream upon register polling.
+ */
 uint16_t Motor_GetCurrent(uint8_t motor) {
     return (motor == MOTOR_A) ? motor_current_a : motor_current_b;
 }
 
+/**
+ * @brief  Drives Half Full-Scale operational adjustments physically impacting max ranges.
+ * @param  enable Defines behavior intent across ranges.
+ * @note   Used in: Motor_HandleCommand() bridging host HFS toggles firmly 
+ *         down into exact GPIO output representations.
+ */
 void Motor_SetHFS(bool enable) {
     motor_hfs_enabled = enable;
     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, enable ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
+/**
+ * @brief  Queries actual Half Full-Scale status toggles.
+ * @retval Returning active HFS state.
+ * @note   Used in: Motor_GetStatusFlags() for comprehensive telemetry diagnostics reporting.
+ */
 bool Motor_GetHFS(void) {
     return motor_hfs_enabled;
 }
 
+/**
+ * @brief  Returns parameter indicating whether late motor suspension commands remain queued.
+ * @retval True if motor expects auto-shutdown upon movement resolution.
+ * @note   Used in: Motor_GetStatusFlags() offering detailed execution checks 
+ *         for external polling interfaces.
+ */
 bool Motor_GetReleaseOnComplete(void) {
     return stepper_release_delay_ms > 0;
 }
 
+/**
+ * @brief  Aggregates multiple internal statuses (Busy, Mode, HFS, Decay, etc) into a minimal binary array format.
+ * @retval Compiled binary 8-bit mapping flag representing active statuses.
+ * @note   Used in: Motor_PopulateTelemetry() efficiently passing state blocks 
+ *         instead of returning distinct register checks for every variable.
+ */
 uint8_t Motor_GetStatusFlags(void) {
     return (Motor_IsBusy() ? 0x01U : 0x00U)
          | ((Motor_GetMode() == MOTOR_MODE_STEPPER) ? 0x02U : 0x00U)
@@ -642,6 +806,12 @@ uint8_t Motor_GetStatusFlags(void) {
          | (Motor_GetReleaseOnComplete() ? 0x40U : 0x00U);
 }
 
+/**
+ * @brief  Fills the given array completely defining internal states and active sensed values.
+ * @param  buffer Target destination array memory.
+ * @note   Used in: Communication modules managing external bus (I2C) readout requirements 
+ *         to correctly return local stats per node query frames.
+ */
 void Motor_PopulateTelemetry(uint8_t *buffer) {
     if (buffer == NULL) {
         return;
@@ -661,6 +831,11 @@ void Motor_PopulateTelemetry(uint8_t *buffer) {
 // Using ifdef here is redundant but allows to compile this file
 // as part of the monolithic firmware without linker issues, if desired.
 #ifdef MODULINO_MOTORS_BUILD
+/**
+ * @brief  Hardware recurring timer driving Stepper outputs rhythmically over phase segments.
+ * @note   Used in: STM32 HAL interrupt vector mapping natively routing TIM3 intervals 
+ *         safely across defined logic stepping sequences to manage motor positions correctly.
+ */
 void TIM3_IRQHandler(void) {
     if (__HAL_TIM_GET_FLAG(&htim3, TIM_FLAG_UPDATE) != RESET) {
         if (__HAL_TIM_GET_IT_SOURCE(&htim3, TIM_IT_UPDATE) != RESET) {

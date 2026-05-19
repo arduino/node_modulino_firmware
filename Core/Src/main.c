@@ -764,6 +764,20 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOF_CLK_ENABLE();
 }
 
+/**
+ * @brief Reads the state of the pinstraps to determine the type of Modulino.
+ * The pinstraps are read from the following pins: PA6, PA7, PA8, PC14, PC15, PF2
+ * The state of each pin is read and combined into a single byte, where each bit represents the state of one pinstrap.
+ * The mapping of pins to bits in the returned byte is as follows:
+ *
+ * +-------+-----+-----+-----+-----+------+------+-----+-----+
+ * | Bit   |  7  |  6  |  5  |  4  |  3   |  2   |  1  |  0  |
+ * +-------+-----+-----+-----+-----+------+------+-----+-----+
+ * | Pin   |  -  | PA6 | PA7 | PA8 | PC14 | PC15 | PF2 |  -  |
+ * +-------+-----+-----+-----+-----+------+------+-----+-----+
+ * This allows for up to 64 different combinations of pinstrap states, which can be used to identify the specific type of Modulino.
+ * Note that since bit 0 is not used, the returned value will always be even, and the least significant bit can be used for other purposes if needed.
+ */
 static uint8_t readPinstraps() {
 
 #ifdef MODULINO_LEDMATRIX_BUILD
