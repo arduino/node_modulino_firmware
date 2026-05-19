@@ -107,7 +107,7 @@ __attribute__((section(".userdata"))) uint8_t stuff[128];
 
 static volatile uint8_t adc_data[2];
 
-#ifdef FORCE_LEDMATRIX_MODULINO
+#ifdef MODULINO_LEDMATRIX_BUILD
 #include "matrix.c"
 #endif
 
@@ -156,7 +156,7 @@ int main(void)
       endTone = 0;
     }
 
-#if !defined(FORCE_LEDMATRIX_MODULINO)
+#if !defined(MODULINO_LEDMATRIX_BUILD)
     if (PINSTRAP_ADDRESS == NODE_JOYSTICK) {
       ADC_ChannelConfTypeDef sConfig = {0};
       sConfig.Channel = ADC_CHANNEL_0;
@@ -277,7 +277,7 @@ int main(void)
           HAL_GPIO_WritePin(GPIOA, i2c_buffer[0] == 0 ? GPIO_PIN_2 : GPIO_PIN_3, GPIO_PIN_SET);
           break;
         case NODE_LEDMATRIX:
-        #ifdef FORCE_LEDMATRIX_MODULINO
+        #ifdef MODULINO_LEDMATRIX_BUILD
           // If the first three bytes are "GS4", enable grayscale mode
           if(i2c_buffer[0] == 'G' && i2c_buffer[1] == 'S' && i2c_buffer[2] == '4'){
             ledMatrixGrayscaleMode = true;
@@ -746,7 +746,7 @@ static void MX_GPIO_Init(void)
 
 static uint8_t readPinstraps() {
 
-#ifdef FORCE_LEDMATRIX_MODULINO
+#ifdef MODULINO_LEDMATRIX_BUILD
   return NODE_LEDMATRIX;
 #endif
 

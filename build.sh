@@ -22,7 +22,7 @@ echo const > sketches/libraries/Modulino/src/fw.h
 xxd -i -n node_base.bin build/bin/node_base.bin >> sketches/libraries/Modulino/src/fw.h
 
 make clean
-CPU=-mcpu=cortex-m0 DEBUG_MODE=$DEBUG TARGET=matrix_node_base EXTRA_CFLAGS=-DFORCE_LEDMATRIX_MODULINO make
+CPU=-mcpu=cortex-m0 DEBUG_MODE=$DEBUG TARGET=matrix_node_base EXTRA_CFLAGS=-DMODULINO_LEDMATRIX_BUILD make
 echo const > sketches/libraries/Modulino/src/fw_ledmatrix.h
 xxd -i -n matrix_node_base.bin build/bin/matrix_node_base.bin >> sketches/libraries/Modulino/src/fw_ledmatrix.h
 
