@@ -58,6 +58,7 @@ static void transfer(uint8_t b);
 void configurePins(void);
 void configureADC(ADC_HandleTypeDef* hadc);
 void show_leds(uint8_t* data);
+static void processReceivedData(void);
 
 static volatile bool dataReceived = false;
 static uint8_t i2c_buffer[128];
@@ -189,7 +190,21 @@ int main(void)
 #endif
 
     if (dataReceived) {
+      processReceivedData();
+      dataReceived = false;
+    }
+  }
+}
 
+/**
+ * @brief Process the data received over I2C and execute corresponding actions based on the node type.
+ * This function decodes the received command in i2c_buffer and performs actions such as:
+ * - Jumping to bootloader
+ * - Configuring flash
+ * - Controlling motors, LEDs, buzzers, etc.
+ * The specific action is determined by the content of i2c_buffer and the node type defined by PINSTRAP_ADDRESS.
+ */
+static void processReceivedData(void) {
       if (i2c_buffer[0] == 'D' && i2c_buffer[1] == 'I' && i2c_buffer[2] == 'E') {
         JumpToBootloader();
       }
@@ -298,9 +313,6 @@ int main(void)
           Motor_HandleCommand(i2c_buffer);
           #endif
       }
-      dataReceived = false;
-    }
-  }
 }
 
 void show_leds(uint8_t* data) {
@@ -420,10 +432,16 @@ void configurePins() {
     }
 }
 
-uint8_t populateBuffer() {
+/**
+ * Populates the I2C transmit buffer with data to be sent to the host 
+ * when the host requests data from the Modulino.
+ * The content and length of the data depend on the Modulino type as determined by the pinstraps.
+ * @return uint8_t Length of data populated in the I2C transmit buffer
+ */
+uint8_t populateSendBuffer() {
   if (returnFlashStatus) {
     returnFlashStatus = false;
-    return 6;
+    return 7;
   }
   i2c_buffer[0] = PINSTRAP_ADDRESS;
   switch (PINSTRAP_ADDRESS) {
@@ -431,30 +449,30 @@ uint8_t populateBuffer() {
       i2c_buffer[1] = !HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0);
       i2c_buffer[2] = !HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1);
       i2c_buffer[3] = !HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2);
-      return 3;
+      return 4;
     case NODE_ENCODER:
     case NODE_ENCODER_2:
       int16_t data = __HAL_TIM_GET_COUNTER(&htim1) + encoder_last_reset_status;
       memcpy(&i2c_buffer[1], &data, 2);
       i2c_buffer[3] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == 0 ? GPIO_PIN_SET : GPIO_PIN_RESET;
-      return 3;
+      return 4;
     case NODE_SMARTLEDS:
-      return NUM_LEDS * 4;
+      return NUM_LEDS * 4 + 1;
     case NODE_JOYSTICK:
       i2c_buffer[1] = adc_data[0];
       i2c_buffer[2] = adc_data[1];
       i2c_buffer[3] = !HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2);
-      return 3;
+      return 4;
     case NODE_OPTORELAY:
       i2c_buffer[1] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0);
       i2c_buffer[2] = 0;
       i2c_buffer[3] = 0;
-      return 3;
+      return 4;
     case NODE_LATCHRELAY:
       i2c_buffer[1] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2);
       i2c_buffer[2] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3);
       i2c_buffer[3] = 0;
-      return 3;
+      return 4;
     case NODE_LEDMATRIX:
       if(ledMatrixGrayscaleMode){
         i2c_buffer[1] = 'G';
@@ -465,7 +483,7 @@ uint8_t populateBuffer() {
         i2c_buffer[2] = 'O';
         i2c_buffer[3] = 'N';
       }
-      return 3;
+      return 4;
     case NODE_MOTOR:
       #ifdef MODULINO_MOTORS_BUILD
       {
@@ -477,7 +495,7 @@ uint8_t populateBuffer() {
       return 6;
       #endif
   }
-  return 3;
+  return 4;
 }
 
 /**
@@ -489,7 +507,7 @@ uint8_t populateBuffer() {
  * 
  * @return uint8_t Length of data to be received over I2C
  */
-uint8_t prepareRx() {
+uint8_t getReceiveBufferSize() {
   switch (PINSTRAP_ADDRESS) {
     case NODE_OPTORELAY:
     case NODE_LATCHRELAY:
@@ -523,10 +541,10 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c) {
 void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, uint16_t AddrMatchCode) {
 
   if (TransferDirection == I2C_DIRECTION_RECEIVE) {
-    uint8_t len = populateBuffer();
-    HAL_I2C_Slave_Seq_Transmit_IT(&hi2c1, i2c_buffer, len + 1, I2C_FIRST_AND_LAST_FRAME);
+    uint8_t len = populateSendBuffer();
+    HAL_I2C_Slave_Seq_Transmit_IT(&hi2c1, i2c_buffer, len, I2C_FIRST_AND_LAST_FRAME);
   } else {
-    uint8_t len = prepareRx();
+    uint8_t len = getReceiveBufferSize();
     HAL_I2C_Slave_Seq_Receive_IT(&hi2c1, i2c_buffer, len, I2C_FIRST_AND_LAST_FRAME);
   }
 }
