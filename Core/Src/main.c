@@ -39,6 +39,7 @@ ADC_HandleTypeDef hadc1;
 #define NODE_OPTORELAY  0x28
 #define NODE_LATCHRELAY 0x04
 #define NODE_LEDMATRIX  0x72
+#define NODE_MOTOR      0x48
 
 #define NUM_LEDS        8
 
@@ -57,6 +58,7 @@ static void transfer(uint8_t b);
 void configurePins(void);
 void configureADC(ADC_HandleTypeDef* hadc);
 void show_leds(uint8_t* data);
+static void processReceivedData(void);
 
 static volatile bool dataReceived = false;
 static uint8_t i2c_buffer[128];
@@ -66,6 +68,7 @@ static uint8_t PINSTRAP_ADDRESS;
 
 static int16_t encoder_last_reset_status = 0;
 bool ledMatrixGrayscaleMode = false;
+static uint32_t endTone = 0;
 
 void JumpToBootloader (void)
 {
@@ -106,8 +109,12 @@ __attribute__((section(".userdata"))) uint8_t stuff[128];
 
 static volatile uint8_t adc_data[2];
 
-#ifdef FORCE_LEDMATRIX_MODULINO
+#ifdef MODULINO_LEDMATRIX_BUILD
 #include "matrix.c"
+#endif
+
+#ifdef MODULINO_MOTORS_BUILD
+#include "motors.h"
 #endif
 
 /**
@@ -140,8 +147,6 @@ int main(void)
 
   HAL_I2C_EnableListen_IT(&hi2c1);
 
-  uint32_t endTone = 0;
-
   /* Infinite loop */
   while (1)
   {
@@ -151,7 +156,7 @@ int main(void)
       endTone = 0;
     }
 
-#if !defined(FORCE_LEDMATRIX_MODULINO)
+#if !defined(MODULINO_LEDMATRIX_BUILD)
     if (PINSTRAP_ADDRESS == NODE_JOYSTICK) {
       ADC_ChannelConfTypeDef sConfig = {0};
       sConfig.Channel = ADC_CHANNEL_0;
@@ -175,10 +180,30 @@ int main(void)
       adc_data[1] = HAL_ADC_GetValue(&hadc1);
       HAL_ADC_Stop(&hadc1);
     }
+
+    if (PINSTRAP_ADDRESS == NODE_MOTOR) {
+      #ifdef MODULINO_MOTORS_BUILD
+      Motor_Update();
+      #endif
+    }
 #endif
 
     if (dataReceived) {
+      processReceivedData();
+      dataReceived = false;
+    }
+  }
+}
 
+/**
+ * @brief Process the data received over I2C and execute corresponding actions based on the node type.
+ * This function decodes the received command in i2c_buffer and performs actions such as:
+ * - Jumping to bootloader
+ * - Configuring flash
+ * - Controlling motors, LEDs, buzzers, etc.
+ * The specific action is determined by the content of i2c_buffer and the node type defined by PINSTRAP_ADDRESS.
+ */
+static void processReceivedData(void) {
       if (i2c_buffer[0] == 'D' && i2c_buffer[1] == 'I' && i2c_buffer[2] == 'E') {
         JumpToBootloader();
       }
@@ -266,7 +291,7 @@ int main(void)
           HAL_GPIO_WritePin(GPIOA, i2c_buffer[0] == 0 ? GPIO_PIN_2 : GPIO_PIN_3, GPIO_PIN_SET);
           break;
         case NODE_LEDMATRIX:
-        #ifdef FORCE_LEDMATRIX_MODULINO
+        #ifdef MODULINO_LEDMATRIX_BUILD
           // If the first three bytes are "GS4", enable grayscale mode
           if(i2c_buffer[0] == 'G' && i2c_buffer[1] == 'S' && i2c_buffer[2] == '4'){
             ledMatrixGrayscaleMode = true;
@@ -282,10 +307,11 @@ int main(void)
           }
         #endif
           break;
+        case NODE_MOTOR:
+          #ifdef MODULINO_MOTORS_BUILD
+          Motor_HandleCommand(i2c_buffer);
+          #endif
       }
-      dataReceived = false;
-    }
-  }
 }
 
 void show_leds(uint8_t* data) {
@@ -396,13 +422,25 @@ void configurePins() {
       //__HAL_TIM_CLEAR_FLAG(&htim3, TIM_IT_UPDATE);
       //__HAL_TIM_ENABLE_IT(&htim3, TIM_IT_UPDATE);
       break;
+
+    case NODE_MOTOR:
+#ifdef MODULINO_MOTORS_BUILD
+      Motor_Init();
+#endif
+      break;
     }
 }
 
-uint8_t populateBuffer() {
+/**
+ * Populates the I2C transmit buffer with data to be sent to the host 
+ * when the host requests data from the Modulino.
+ * The content and length of the data depend on the Modulino type as determined by the pinstraps.
+ * @return uint8_t Length of data populated in the I2C transmit buffer
+ */
+uint8_t populateSendBuffer() {
   if (returnFlashStatus) {
     returnFlashStatus = false;
-    return 6;
+    return 7;
   }
   i2c_buffer[0] = PINSTRAP_ADDRESS;
   switch (PINSTRAP_ADDRESS) {
@@ -410,30 +448,30 @@ uint8_t populateBuffer() {
       i2c_buffer[1] = !HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0);
       i2c_buffer[2] = !HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1);
       i2c_buffer[3] = !HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2);
-      return 3;
+      return 4;
     case NODE_ENCODER:
     case NODE_ENCODER_2:
       int16_t data = __HAL_TIM_GET_COUNTER(&htim1) + encoder_last_reset_status;
       memcpy(&i2c_buffer[1], &data, 2);
       i2c_buffer[3] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == 0 ? GPIO_PIN_SET : GPIO_PIN_RESET;
-      return 3;
+      return 4;
     case NODE_SMARTLEDS:
-      return NUM_LEDS * 4;
+      return NUM_LEDS * 4 + 1;
     case NODE_JOYSTICK:
       i2c_buffer[1] = adc_data[0];
       i2c_buffer[2] = adc_data[1];
       i2c_buffer[3] = !HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2);
-      return 3;
+      return 4;
     case NODE_OPTORELAY:
       i2c_buffer[1] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0);
       i2c_buffer[2] = 0;
       i2c_buffer[3] = 0;
-      return 3;
+      return 4;
     case NODE_LATCHRELAY:
       i2c_buffer[1] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2);
       i2c_buffer[2] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3);
       i2c_buffer[3] = 0;
-      return 3;
+      return 4;
     case NODE_LEDMATRIX:
       if(ledMatrixGrayscaleMode){
         i2c_buffer[1] = 'G';
@@ -444,9 +482,19 @@ uint8_t populateBuffer() {
         i2c_buffer[2] = 'O';
         i2c_buffer[3] = 'N';
       }
-      return 3;
+      return 4;
+    case NODE_MOTOR:
+      #ifdef MODULINO_MOTORS_BUILD
+      {
+        Motor_PopulateTelemetry(&i2c_buffer[1]);
+         return 6;
+      }
+      #else
+      memset(&i2c_buffer[1], 0, 5);
+      return 6;
+      #endif
   }
-  return 3;
+  return 4;
 }
 
 /**
@@ -458,7 +506,7 @@ uint8_t populateBuffer() {
  * 
  * @return uint8_t Length of data to be received over I2C
  */
-uint8_t prepareRx() {
+uint8_t getReceiveBufferSize() {
   switch (PINSTRAP_ADDRESS) {
     case NODE_OPTORELAY:
     case NODE_LATCHRELAY:
@@ -475,6 +523,8 @@ uint8_t prepareRx() {
       return NUM_LEDS * 4;
     case NODE_LEDMATRIX:
       return ledMatrixGrayscaleMode ? 48 : 12;
+    case NODE_MOTOR:
+      return 8; // Largest motor command is 8 bytes
   }
   return 3;
 }
@@ -490,10 +540,10 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c) {
 void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, uint16_t AddrMatchCode) {
 
   if (TransferDirection == I2C_DIRECTION_RECEIVE) {
-    uint8_t len = populateBuffer();
-    HAL_I2C_Slave_Seq_Transmit_IT(&hi2c1, i2c_buffer, len + 1, I2C_FIRST_AND_LAST_FRAME);
+    uint8_t len = populateSendBuffer();
+    HAL_I2C_Slave_Seq_Transmit_IT(&hi2c1, i2c_buffer, len, I2C_FIRST_AND_LAST_FRAME);
   } else {
-    uint8_t len = prepareRx();
+    uint8_t len = getReceiveBufferSize();
     HAL_I2C_Slave_Seq_Receive_IT(&hi2c1, i2c_buffer, len, I2C_FIRST_AND_LAST_FRAME);
   }
 }
@@ -503,6 +553,9 @@ void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c) {
 }
 
 void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c) {
+  // In case of error, re-enable listening mode 
+  // to be able to receive the next command
+  HAL_I2C_EnableListen_IT(&hi2c1);
 }
 
 /**
@@ -711,9 +764,23 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOF_CLK_ENABLE();
 }
 
+/**
+ * @brief Reads the state of the pinstraps to determine the type of Modulino.
+ * The pinstraps are read from the following pins: PA6, PA7, PA8, PC14, PC15, PF2
+ * The state of each pin is read and combined into a single byte, where each bit represents the state of one pinstrap.
+ * The mapping of pins to bits in the returned byte is as follows:
+ *
+ * +-------+-----+-----+-----+-----+------+------+-----+-----+
+ * | Bit   |  7  |  6  |  5  |  4  |  3   |  2   |  1  |  0  |
+ * +-------+-----+-----+-----+-----+------+------+-----+-----+
+ * | Pin   |  -  | PA6 | PA7 | PA8 | PC14 | PC15 | PF2 |  -  |
+ * +-------+-----+-----+-----+-----+------+------+-----+-----+
+ * This allows for up to 64 different combinations of pinstrap states, which can be used to identify the specific type of Modulino.
+ * Note that since bit 0 is not used, the returned value will always be even, and the least significant bit can be used for other purposes if needed.
+ */
 static uint8_t readPinstraps() {
 
-#ifdef FORCE_LEDMATRIX_MODULINO
+#ifdef MODULINO_LEDMATRIX_BUILD
   return NODE_LEDMATRIX;
 #endif
 

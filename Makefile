@@ -76,6 +76,11 @@ Drivers/STM32C0xx_HAL_Driver/Src/stm32c0xx_hal_iwdg.c \
 Drivers/STM32C0xx_HAL_Driver/Src/stm32c0xx_hal_tim.c \
 Drivers/STM32C0xx_HAL_Driver/Src/stm32c0xx_hal_tim_ex.c
 
+# Compile motors driver sources only for motors firmware variant.
+ifeq ($(TARGET),motors_node_base)
+C_SOURCES += Core/Src/motors.c
+endif
+
 # ASM sources
 ASM_SOURCES =  \
 startup_stm32c011xx.s

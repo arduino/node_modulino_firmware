@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e # Exit immediately if a command exits with a non-zero status
 
 # Make sure sketches/libraries/Modulino/src/ folder exists
 
@@ -22,8 +23,13 @@ echo const > sketches/libraries/Modulino/src/fw.h
 xxd -i -n node_base.bin build/bin/node_base.bin >> sketches/libraries/Modulino/src/fw.h
 
 make clean
-CPU=-mcpu=cortex-m0 DEBUG_MODE=$DEBUG TARGET=matrix_node_base EXTRA_CFLAGS=-DFORCE_LEDMATRIX_MODULINO make
+CPU=-mcpu=cortex-m0 DEBUG_MODE=$DEBUG TARGET=matrix_node_base EXTRA_CFLAGS=-DMODULINO_LEDMATRIX_BUILD make
 echo const > sketches/libraries/Modulino/src/fw_ledmatrix.h
 xxd -i -n matrix_node_base.bin build/bin/matrix_node_base.bin >> sketches/libraries/Modulino/src/fw_ledmatrix.h
 
-echo "Now you can create a commit in Modulino library"
+make clean
+CPU=-mcpu=cortex-m0 DEBUG_MODE=$DEBUG TARGET=motors_node_base EXTRA_CFLAGS=-DMODULINO_MOTORS_BUILD make
+echo const > sketches/libraries/Modulino/src/fw_motors.h
+xxd -i -n motors_node_base.bin build/bin/motors_node_base.bin >> sketches/libraries/Modulino/src/fw_motors.h
+
+echo "✅ Build successful. Now you can create a commit in Modulino library"
