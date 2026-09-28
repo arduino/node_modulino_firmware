@@ -66,9 +66,30 @@ static uint8_t i2c_buffer[128];
 static uint8_t ADDRESS;
 static uint8_t PINSTRAP_ADDRESS;
 
+// Offset added to the encoder position so that it reports the value set via I2C
 static int16_t encoder_last_reset_status = 0;
+// Timer counter at the previous call of getEncoderPosition(), used to compute how far it moved since
+static uint16_t encoder_last_counter = 0;
+// Total timer counts since startup. 32 bits wide, so that it can be halved without breaking the wraparound
+static int32_t encoder_accumulator = 0;
 bool ledMatrixGrayscaleMode = false;
 static uint32_t endTone = 0;
+
+/**
+ * @brief Returns the encoder position as a signed 16-bit value (-32768 to 32767) that wraps
+ * around at its limits, with one step per two timer counts.
+ * The timer counts in TI12 mode (4 counts per quadrature cycle), which is robust against
+ * contact bounce, but produces twice as many counts as the TI1 mode used by earlier firmware.
+ * Halving keeps the scale compatible with it. Halving the 16-bit counter directly would
+ * break its wraparound, so the counter deltas are accumulated instead.
+ * Must not be interrupted by another call, as it updates shared state.
+ */
+static int16_t getEncoderPosition(void) {
+  uint16_t counter = __HAL_TIM_GET_COUNTER(&htim1);
+  encoder_accumulator += (int16_t)(counter - encoder_last_counter);
+  encoder_last_counter = counter;
+  return (int16_t)(encoder_accumulator >> 1);
+}
 
 void JumpToBootloader (void)
 {
@@ -269,9 +290,12 @@ static void processReceivedData(void) {
           break;
         case NODE_ENCODER:
         case NODE_ENCODER_2:
-          int16_t setpoint;
-          memcpy(&setpoint, &i2c_buffer[0], 2);
-          encoder_last_reset_status = setpoint - __HAL_TIM_GET_COUNTER(&htim1);
+          int16_t targetValue;
+          memcpy(&targetValue, &i2c_buffer[0], 2);
+          // Prevent an I2C read from updating the encoder position at the same time
+          __disable_irq();
+          encoder_last_reset_status = targetValue - getEncoderPosition();
+          __enable_irq();
           break;
         case NODE_SMARTLEDS:
           show_leds(i2c_buffer);
@@ -451,7 +475,7 @@ uint8_t populateSendBuffer() {
       return 4;
     case NODE_ENCODER:
     case NODE_ENCODER_2:
-      int16_t data = __HAL_TIM_GET_COUNTER(&htim1) + encoder_last_reset_status;
+      int16_t data = getEncoderPosition() + encoder_last_reset_status;
       memcpy(&i2c_buffer[1], &data, 2);
       i2c_buffer[3] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == 0 ? GPIO_PIN_SET : GPIO_PIN_RESET;
       return 4;
@@ -655,15 +679,22 @@ static void MX_TIM1_Encoder_Init(void)
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  sConfig.EncoderMode = TIM_ENCODERMODE_TI1;
+  // Count on the edges of both channels. This only counts valid quadrature transitions. Bounce thus produces
+  // +1/-1 pairs that cancel out instead of steps in the wrong direction at high speeds.
+  sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
   sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
   sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
   sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
-  sConfig.IC1Filter = 0;
+  // Only accept a level change on the encoder pins once it has been stable for 8 samples,
+  // taken every 32 timer clock cycles (0xF, the longest filter). That's 256 cycles, ~21us at 12MHz.
+  // Contact bounce is shorter and gets ignored; real edges from turning the knob last milliseconds.
+  // The time scales with the timer clock, e.g. ~5us at 48MHz. To keep ~21us at a faster clock,
+  // slow down the filter's sampling clock with htim1.Init.ClockDivision (DIV2 or DIV4).
+  sConfig.IC1Filter = 0xF;
   sConfig.IC2Polarity = TIM_ICPOLARITY_RISING;
   sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
   sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
-  sConfig.IC2Filter = 0;
+  sConfig.IC2Filter = 0xF;
   if (HAL_TIM_Encoder_Init(&htim1, &sConfig) != HAL_OK)
   {
     Error_Handler();
