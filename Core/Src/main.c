@@ -75,6 +75,11 @@ static int32_t encoder_accumulator = 0;
 bool ledMatrixGrayscaleMode = false;
 static uint32_t endTone = 0;
 
+// Try to detect which buttons if any that have been pressed since the last update call.
+// Maybe use 4 bits per button, As state, Maybe requier at least 2 unpressed followed
+// by at least two pressed.
+static uint16_t buttonsPressed = 0;
+
 /**
  * @brief Returns the encoder position as a signed 16-bit value (-32768 to 32767) that wraps
  * around at its limits, with one step per two timer counts.
@@ -207,6 +212,45 @@ int main(void)
       HAL_ADC_PollForConversion(&hadc1, 10);
       adc_data[1] = HAL_ADC_GetValue(&hadc1);
       HAL_ADC_Stop(&hadc1);
+    } else if (PINSTRAP_ADDRESS == NODE_BUTTONS) {
+      bool  pressed;
+      uint8_t state;
+
+      // Check button 0
+      if (!(buttonsPressed & 1)) {
+        state = (buttonsPressed >> 4) & 0xf;
+        pressed = !HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0);
+        if (state == 0) state = pressed? 0 : 1;  // check for at least two not pressed.
+        else if (state == 1) state = pressed? 0 : 2;   
+        else if (state == 2) state = pressed? 3 : 2; // Now check for pressed.
+        else if (state == 3) state = pressed? 4 : 1;  // If not 2nd pressed in row go back to first not pressed.
+        if (state == 4) buttonsPressed |= 1;
+        buttonsPressed = (buttonsPressed & 0xff0f) | (state << 4);
+      }
+
+      // check button 1
+      if (!(buttonsPressed & 2)) {
+        state = (buttonsPressed >> 8) & 0xf;
+        pressed = !HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1);
+        if (state == 0) state = pressed? 0 : 1;  // check for at least two not pressed.
+        else if (state == 1) state = pressed? 0 : 2;   
+        else if (state == 2) state = pressed? 3 : 2; // Now check for pressed.
+        else if (state == 3) state = pressed? 4 : 1;  // If not 2nd pressed in row go back to first not pressed.
+        if (state == 4) buttonsPressed |= 2;
+        buttonsPressed = (buttonsPressed & 0xf0ff) | (state << 8);
+
+      }
+      // check button 2
+      if (!(buttonsPressed & 4)) {
+        state = (buttonsPressed >> 12) & 0xf;
+        pressed = !HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2);
+        if (state == 0) state = pressed? 0 : 1;  // check for at least two not pressed.
+        else if (state == 1) state = pressed? 0 : 2;   
+        else if (state == 2) state = pressed? 3 : 2; // Now check for pressed.
+        else if (state == 3) state = pressed? 4 : 1;  // If not 2nd pressed in row go back to first not pressed.
+        if (state == 4) buttonsPressed |= 4;
+        buttonsPressed = (buttonsPressed & 0x0fff) | (state << 12);
+      }
     }
 
     if (PINSTRAP_ADDRESS == NODE_MOTOR) {
@@ -479,7 +523,10 @@ uint8_t populateSendBuffer() {
       i2c_buffer[1] = !HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0);
       i2c_buffer[2] = !HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1);
       i2c_buffer[3] = !HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2);
-      return 4;
+      // build the button pressed to return, look at theree nibles and convert to bits.
+      i2c_buffer[4] = 0xb0 | (buttonsPressed & 0xf);
+      buttonsPressed = 0;
+      return 5;
     case NODE_ENCODER:
     case NODE_ENCODER_2:
       int16_t data = getEncoderPosition() + encoder_last_reset_status;
