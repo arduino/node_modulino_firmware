@@ -1,9 +1,9 @@
 #!/bin/bash
 set -e # Exit immediately if a command exits with a non-zero status
 
-# Make sure sketches/libraries/Modulino/src/ folder exists
+# Make sure sketches/libraries/Arduino_Modulino/src/ folder exists
 
-if [ ! -d sketches/libraries/Modulino/src/ ]; then
+if [ ! -d sketches/libraries/Arduino_Modulino/src/ ]; then
 echo "Please run git submodule init && git submodule update"
 exit 1
 fi
@@ -19,17 +19,17 @@ fi
 make cleanall # Clean previous builds including binary files
 
 CPU=-mcpu=cortex-m0 DEBUG_MODE=$DEBUG make
-echo const > sketches/libraries/Modulino/src/fw.h
-xxd -i -n node_base.bin build/bin/node_base.bin >> sketches/libraries/Modulino/src/fw.h
+echo const > sketches/libraries/Arduino_Modulino/src/fw.h
+xxd -i -n node_base.bin build/bin/node_base.bin >> sketches/libraries/Arduino_Modulino/src/fw.h
 
 make clean
 CPU=-mcpu=cortex-m0 DEBUG_MODE=$DEBUG TARGET=matrix_node_base EXTRA_CFLAGS=-DMODULINO_LEDMATRIX_BUILD make
-echo const > sketches/libraries/Modulino/src/fw_ledmatrix.h
-xxd -i -n matrix_node_base.bin build/bin/matrix_node_base.bin >> sketches/libraries/Modulino/src/fw_ledmatrix.h
+echo const > sketches/libraries/Arduino_Modulino/src/fw_ledmatrix.h
+xxd -i -n matrix_node_base.bin build/bin/matrix_node_base.bin >> sketches/libraries/Arduino_Modulino/src/fw_ledmatrix.h
 
 make clean
 CPU=-mcpu=cortex-m0 DEBUG_MODE=$DEBUG TARGET=motors_node_base EXTRA_CFLAGS=-DMODULINO_MOTORS_BUILD make
-echo const > sketches/libraries/Modulino/src/fw_motors.h
-xxd -i -n motors_node_base.bin build/bin/motors_node_base.bin >> sketches/libraries/Modulino/src/fw_motors.h
+echo const > sketches/libraries/Arduino_Modulino/src/fw_motors.h
+xxd -i -n motors_node_base.bin build/bin/motors_node_base.bin >> sketches/libraries/Arduino_Modulino/src/fw_motors.h
 
 echo "✅ Build successful. Now you can create a commit in Modulino library"
